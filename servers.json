@@ -1,0 +1,17 @@
+[
+    {
+        "name": "One",
+        "ip": "localhost",
+        "port": 8080
+    },
+    {
+        "name": "Two",
+        "ip": "localhost",
+        "port": 8090
+    },
+    {
+        "name": "Three",
+        "ip": "localhost",
+        "port": 8100
+    }
+]
