@@ -2,9 +2,9 @@ import os
 from datetime import datetime
 import tkinter as tk
 class Logger:
-    def __init__(self,log_text):
-        self.log_text = log_text
-        self.log_file = "load_balancer_logs.txt"
+    def __init__(self,log_text,logfile_directory):
+        self.log_text = log_text #log_text is the object ref for log display in UI
+        self.log_file = os.path.join(logfile_directory,"load_balancer_logs.txt")
         self.max_log_size = 5 * 1024 * 1024  # 5 MB
 
     def log_message(self, message):

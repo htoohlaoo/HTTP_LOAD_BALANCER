@@ -1,5 +1,7 @@
 {
-    "serverfile_location":"",
-    "logfile_location":"",
-    "maximum_servers":5
+    "serverfile_directory":"",
+    "logfile_directory":"",
+    "configfile_directory":"",
+    "maximum_servers":5,
+    "health_check_circle":5
 }

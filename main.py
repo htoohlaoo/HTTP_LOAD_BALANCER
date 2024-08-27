@@ -5,12 +5,19 @@ import threading
 from loadbalancer import LoadBalancer
 import datetime
 from logger import Logger
-
+import os
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("HTTP Load Balancer")
         self.geometry("600x400")
+
+        #configurations directories set to current working directory
+        self.serverfile_directory = os.getcwd()
+        self.logfile_directory = os.getcwd()
+        self.configfile_directory = os.getcwd()
+        self.health_check_circle = 5 #set default to 5 
+        self.maximum_servers = 5 
 
         # Server List Section
         self.server_frame = ttk.LabelFrame(self, text="Server List")
@@ -69,6 +76,10 @@ class LoadBalancerUI(tk.Tk):
         # Status Label
         self.status_label = ttk.Label(self.control_frame, text="Status: Stopped")
         self.status_label.pack(side="left", padx=20, pady=5)
+
+        # Add Config button
+        config_button = tk.Button(self.control_frame, text="Config", command=self.open_config_popup)
+        config_button.pack(side=tk.LEFT)
 
         # Logs/Status Section
         self.log_frame = ttk.LabelFrame(self, text="Logs")
@@ -207,105 +218,176 @@ class LoadBalancerUI(tk.Tk):
         center_x = canvas_width / 2
         center_y = canvas_height / 2
 
-        # Draw Load Balancer (top center) if not already drawn
+        # Load Balancer dimensions and positioning
+        lb_width, lb_height = 120, 50
+        lb_x, lb_y = center_x, center_y - canvas_height / 3  # Top center position for load balancer
         lb_tag = "load_balancer"
-        if not self.canvas.find_withtag(lb_tag):
-            lb_width, lb_height = 120, 50
-            lb_x, lb_y = center_x, center_y - canvas_height / 3
-            self.canvas.create_rectangle(
-                lb_x - lb_width // 2, lb_y - lb_height // 2,
-                lb_x + lb_width // 2, lb_y + lb_height // 2,
-                fill="orange", tags=lb_tag
-            )
-            self.canvas.create_text(
-                lb_x, lb_y, text="Load Balancer",
-                font=("Arial", 12, "bold"), tags=lb_tag
-            )
+
+        # Clear the canvas before drawing (useful for dynamic updates)
+        self.canvas.delete("all")
+
+        # Draw Load Balancer
+        self.canvas.create_rectangle(
+            lb_x - lb_width // 2, lb_y - lb_height // 2,
+            lb_x + lb_width // 2, lb_y + lb_height // 2,
+            fill="orange", tags=lb_tag
+        )
+        self.canvas.create_text(
+            lb_x, lb_y, text="Load Balancer",
+            font=("Arial", 12, "bold"), tags=lb_tag
+        )
 
         # Draw or update Servers
         servers = self.server_listbox.get(0, tk.END)
         num_servers = len(servers)
         server_radius = 30
         spacing = 150  # Horizontal spacing between servers
-        start_x = center_x - (num_servers - 1) * spacing / 2
 
-        existing_servers = {item for item in self.canvas.find_withtag("server")}
+        # Calculate total width required for all servers
+        total_width = (num_servers - 1) * spacing
+        start_x = center_x - total_width / 2  # Adjust starting position to center the servers
 
-        if num_servers > 0:
-            servers_status = {}
-            if self.load_balancer:
-                servers_status = self.load_balancer.get_server_status()
+        servers_status = {}
+        if self.load_balancer:
+            servers_status = self.load_balancer.get_server_status()
 
-            for i, server in enumerate(servers):
-                server_details = server.split(' (')[1].rstrip(')')
-                server_ip, server_port = server_details.split(':')
-                ip_port = (server_ip, int(server_port))
-                status = servers_status.get(ip_port, {'health': 'Unknown', 'requests': 0})
-                health = status['health']
-                server_color = 'red' if health == "Unhealthy" else 'lightblue'
-                server_x = start_x + i * spacing
-                server_y = center_y + 30
-                server_tag = f"server_{server_ip}_{server_port}"
+        for i, server in enumerate(servers):
+            server_details = server.split(' (')[1].rstrip(')')
+            server_ip, server_port = server_details.split(':')
+            ip_port = (server_ip, int(server_port))
+            status = servers_status.get(ip_port, {'health': 'Unknown', 'requests': 0})
+            health = status['health']
+            server_color = 'red' if health == "Unhealthy" else 'lightblue'
 
-                if not self.canvas.find_withtag(server_tag):
-                    # New server, draw it
-                    self.canvas.create_oval(
-                        server_x - server_radius, server_y - server_radius,
-                        server_x + server_radius, server_y + server_radius,
-                        fill=server_color, tags=("server", server_tag)
-                    )
+            # Calculate server position
+            server_x = start_x + i * spacing
+            server_y = center_y + 30  # Placed below load balancer
 
-                    # Draw server name inside the circle
-                    server_name = server.split(' (')[0]
-                    self.canvas.create_text(
-                        server_x, server_y, text=server_name,
-                        font=("Arial", 8, "bold"), tags=(server_tag,)
-                    )
+            server_tag = f"server_{server_ip}_{server_port}"
 
-                    # Draw additional server details below the circle
-                    detail_y_start = server_y + server_radius + 10
-                    self.canvas.create_text(
-                        server_x, detail_y_start, text=f"IP: {server_ip}",
-                        font=("Arial", 8), tags=(server_tag,)
-                    )
-                    self.canvas.create_text(
-                        server_x, detail_y_start + 15, text=f"Port: {server_port}",
-                        font=("Arial", 8), tags=(server_tag,)
-                    )
-                    self.canvas.create_text(
-                        server_x, detail_y_start + 30, text=f"Health: {health}",
-                        font=("Arial", 8), tags=(server_tag,)
-                    )
-                    self.canvas.create_text(
-                        server_x, detail_y_start + 45, text=f"Requests: {status['requests']}",
-                        font=("Arial", 8), tags=(server_tag,)
-                    )
+            # Draw server circle
+            self.canvas.create_oval(
+                server_x - server_radius, server_y - server_radius,
+                server_x + server_radius, server_y + server_radius,
+                fill=server_color, tags=("server", server_tag)
+            )
 
-                    # Draw connection line to the load balancer
-                    line_color = 'green' if health != "Unhealthy" else 'red'
-                    self.canvas.create_line(
-                        lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius,
-                        fill=line_color, width=2, tags=(server_tag,)
-                    )
-                else:
-                    # Update existing server details
-                    self.canvas.itemconfig(
-                        self.canvas.find_withtag(server_tag)[0], fill=server_color
-                    )
-                    self.canvas.itemconfig(
-                        self.canvas.find_withtag(server_tag)[2], text=f"Health: {health}"
-                    )
-                    self.canvas.itemconfig(
-                        self.canvas.find_withtag(server_tag)[3], text=f"Requests: {status['requests']}"
-                    )
+            # Draw server name inside the circle
+            server_name = server.split(' (')[0]
+            self.canvas.create_text(
+                server_x, server_y, text=server_name,
+                font=("Arial", 8, "bold"), tags=(server_tag,)
+            )
 
-                # Remove this server from the existing list
-                existing_servers.discard(self.canvas.find_withtag(server_tag)[0])
+            # Draw additional server details below the circle
+            detail_y_start = server_y + server_radius + 10
+            self.canvas.create_text(
+                server_x, detail_y_start, text=f"IP: {server_ip}",
+                font=("Arial", 8), tags=(server_tag,)
+            )
+            self.canvas.create_text(
+                server_x, detail_y_start + 15, text=f"Port: {server_port}",
+                font=("Arial", 8), tags=(server_tag,)
+            )
+            self.canvas.create_text(
+                server_x, detail_y_start + 30, text=f"Health: {health}",
+                font=("Arial", 8), tags=(server_tag,)
+            )
+            self.canvas.create_text(
+                server_x, detail_y_start + 45, text=f"Requests: {status['requests']}",
+                font=("Arial", 8), tags=(server_tag,)
+            )
 
-        # Remove servers that are no longer in the list
-        for item in existing_servers:
-            self.canvas.delete(item)
+            # Draw connection line to the load balancer
+            line_color = 'green' if health != "Unhealthy" else 'red'
+            self.canvas.create_line(
+                lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius,
+                fill=line_color, width=2, tags=(server_tag,)
+            )
 
+    def open_config_popup(self):
+        # Create a new top-level window for JSON input
+        self.popup = tk.Toplevel(self)
+        self.popup.title("Configure Load Balancer")
+
+        label = tk.Label(self.popup, text="Enter JSON Configuration:")
+        label.pack(padx=10, pady=10)
+
+        self.config_json = tk.Text(self.popup, width=40, height=10)
+        self.config_json.pack(padx=10, pady=10)
+
+        # Set default JSON template
+        default_json = {
+            "serverfile_directory": self.serverfile_directory,
+            "logfile_directory": self.logfile_directory,
+            "configfile_directory":self.configfile_directory,
+            "maximum_servers": self.maximum_servers,
+            "health_check_circle": self.health_check_circle
+        }
+        self.config_json.insert(tk.END, json.dumps(default_json, indent=4))
+
+        apply_button = tk.Button(self.popup, text="Apply", command=self.save_config)
+        apply_button.pack(side=tk.LEFT, padx=5, pady=10)
+
+        cancel_button = tk.Button(self.popup, text="Cancel", command=self.popup.destroy)
+        cancel_button.pack(side=tk.RIGHT, padx=5, pady=10)
+    def save_config(self):
+        try:
+            config = json.loads(self.config_json.get("1.0", tk.END).strip())
+           
+            # Access values and adds them to self.attributes
+            self.serverfile_directory = config.get('serverfile_directory')
+            self.logfile_directory = config.get('logfile_directory')
+            self.configfile_directory = config.get('configfile_directory')
+            self.maximum_servers = config.get('maximum_servers')
+            self.health_check_circle = config.get('health_check_circle')
+            self.save_config_to_json()
+            self.popup.destroy()
+        except json.JSONDecodeError:
+            self.show_error_popup("Invalid JSON", "The provided JSON is invalid. Please correct it and try again.")
+    
+    def show_error_popup(self, title, message):
+        error_popup = tk.Toplevel(self)
+        error_popup.title(title)
+
+        error_label = tk.Label(error_popup, text=message, fg='red')
+        error_label.pack(padx=10, pady=10)
+
+        close_button = tk.Button(error_popup, text="Close", command=error_popup.destroy)
+        close_button.pack(pady=10)
+
+    def load_config_from_json(self):
+        # Path to your JSON file
+        config_path = os.path.join(self.configfile_directory,'config.json')
+
+        # Open and read the JSON file
+        with open(config_path, 'r') as file:
+            config_data = json.load(file)
+
+        # Access values from the JSON data
+        self.serverfile_directory = config_data.get('serverfile_directory')
+        self.logfile_directory = config_data.get('logfile_directory')
+        self.configfile_directory = config_data.get('configfile_directory')
+        self.maximum_servers = config_data.get('maximum_servers')
+        self.health_check_circle = config_data.get('health_check_circle')
+    def save_config_to_json(self):
+            # Create a dictionary with the configuration data
+            config_data = {
+                "serverfile_directory": self.serverfile_directory,
+                "logfile_directory": self.logfile_directory,
+                "configfile_directory": self.configfile_directory,
+                "health_check_circle": self.health_check_circle,
+                "maximum_servers": self.maximum_servers
+            }
+
+            # Create the path for config
+            config_path = os.path.join(self.configfile_directory, 'config.json')
+
+            # Write the configuration data to a JSON file
+            with open(config_path, 'w') as file:
+                json.dump(config_data, file, indent=4)
+
+            self.log_message(f"Configuration saved to {config_path}")
 
     def log_message(self, message):
         self.logger.log_message(message=message)
