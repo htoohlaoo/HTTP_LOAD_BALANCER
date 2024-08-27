@@ -24,6 +24,12 @@ class LoadBalancer:
 
     def stop(self):
         self.running = False
+        # Close server socket to unblock accept call if needed
+        try:
+            if hasattr(self, 'server_socket'):
+                self.server_socket.close()
+        except Exception as e:
+            self.status_update_callback(f"Error closing server socket: {e}")
 
     def health_check(self):
         print('Checking servers...')

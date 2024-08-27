@@ -4,7 +4,7 @@ import json
 import threading
 from loadbalancer import LoadBalancer
 import datetime
-
+from logger import Logger
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -77,7 +77,7 @@ class LoadBalancerUI(tk.Tk):
 
         self.load_balancer = None
         self.load_balancer_thread = None
-        self.log_file = "load_balancer_logs.txt"  # File to store log messages
+        self.logger = Logger(self.log_text)
 
         self.load_servers_from_json()
 
@@ -169,7 +169,7 @@ class LoadBalancerUI(tk.Tk):
                 server_ip, server_port = server_entry.split(' (')[1].rstrip(')').split(':')
                 self.load_balancer.backend_servers = [s for s in self.load_balancer.backend_servers if s[0] != server_ip or s[1] != int(server_port)]
             self.save_servers_to_json()
-            self.update_topology()
+        self.update_topology()
 
     def start_load_balancer(self):
         backend_servers = []
@@ -184,10 +184,12 @@ class LoadBalancerUI(tk.Tk):
         self.status_label.config(text="Status: Running")
 
     def stop_load_balancer(self):
+        print("stop loadbalancer")
         if self.load_balancer:
             self.load_balancer.stop()
         if self.load_balancer_thread:
-            self.load_balancer_thread.join()
+            self.load_balancer_thread.join(timeout=5)  # Timeout to prevent indefinite blocking
+            self.load_balancer_thread = None  # Reset thread reference after joining
         self.status_label.config(text="Status: Stopped")
         self.log_message("Load Balancer Stopped")
 
@@ -245,22 +247,9 @@ class LoadBalancerUI(tk.Tk):
 
                 # Draw connection line to the load balancer
                 self.canvas.create_line(lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius, fill="green", width=2)
-
-     # Get the current time
-        current_time = datetime.now()
-        formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")  # Format the time
-
-        # Format the log message with the current time
-        log_entry = f"{formatted_time} - {message}\n"
-
-        # Update the log text widget
-        self.log_text.config(state="normal")
-        self.log_text.insert(tk.END, log_entry)
-        self.log_text.config(state="disabled")
-
-        # Write the log entry to a file
-        with open(self.log_file, "a") as log_file:  # Open the file in append mode
-            log_file.write(log_entry)
+    
+    def log_message(self, message):
+        self.logger.log_message(message=message)
 
 if __name__ == "__main__":
     app = LoadBalancerUI()

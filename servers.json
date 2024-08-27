@@ -13,5 +13,10 @@
         "name": "Three",
         "ip": "localhost",
         "port": 8100
+    },
+    {
+        "name": "Service",
+        "ip": "localhost",
+        "port": 3000
     }
 ]
