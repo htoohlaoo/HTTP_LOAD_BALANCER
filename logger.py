@@ -24,6 +24,7 @@ class Logger:
         self.log_text.config(state="disabled")
 
         # Write the log entry to a file
+        print("Logfile in Logger : ",self.log_file)
         with open(self.log_file, "a") as log_file:
             log_file.write(log_entry)
 

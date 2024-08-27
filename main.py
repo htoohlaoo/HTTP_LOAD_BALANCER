@@ -18,7 +18,7 @@ class LoadBalancerUI(tk.Tk):
         self.configfile_directory = os.getcwd()
         self.health_check_circle = 5 #set default to 5 
         self.maximum_servers = 5 
-
+        self.load_config_from_json()
         # Server List Section
         self.server_frame = ttk.LabelFrame(self, text="Server List")
         self.server_frame.pack(fill="both", padx=10, pady=10, expand=True)
@@ -90,7 +90,8 @@ class LoadBalancerUI(tk.Tk):
 
         self.load_balancer = None
         self.load_balancer_thread = None
-        self.logger = Logger(self.log_text)
+        print("Logfile : ",self.logfile_directory)
+        self.logger = Logger(self.log_text,self.logfile_directory)
 
         self.load_servers_from_json()
 

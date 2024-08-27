@@ -8027,3 +8027,95 @@
 2024-08-27 23:47:18 - Health Checking at 127.0.0.1:4444: OK
 2024-08-27 23:47:26 - Load Balancer Stopped
 2024-08-28 00:16:34 - Configuration saved to /home/anton/Desktop/python_space/config.json
+2024-08-28 00:48:17 - Configuration saved to config.json
+2024-08-28 00:48:27 - Load balancer is running at port: 3333 using round_robin...
+2024-08-28 00:48:28 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:48:29 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:48:30 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:48:30 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:48:30 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:48:35 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:48:36 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:48:37 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:48:37 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:48:37 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:48:42 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:48:43 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:48:44 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:48:44 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:48:44 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:48:49 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:48:50 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:48:51 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:48:51 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:48:51 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:48:56 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:48:57 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:48:58 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:48:58 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:48:58 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:03 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:04 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:05 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:05 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:05 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:10 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:11 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:12 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:12 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:12 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:17 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:18 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:19 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:19 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:19 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:25 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:26 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:27 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:27 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:27 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:32 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:33 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:34 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:34 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:34 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:39 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:40 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:41 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:41 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:41 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:46 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:47 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:48 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:48 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:48 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:49:53 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:49:54 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:49:55 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:49:55 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:49:55 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:50:00 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:50:01 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:50:02 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:50:02 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:50:02 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:50:07 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:50:08 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:50:09 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:50:09 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:50:09 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:50:14 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:50:15 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:50:16 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:50:16 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:50:16 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:50:21 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:50:22 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:50:23 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:50:23 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:50:23 - Health Checking at 127.0.0.1:4444: OK
+2024-08-28 00:50:28 - Health Checking at 127.0.0.1:8080: OK
+2024-08-28 00:50:29 - Health Checking at 127.0.0.1:8090: OK
+2024-08-28 00:50:30 - Health Checking at 127.0.0.1:8100: OK
+2024-08-28 00:50:30 - Error checking server ('127.1.1.0', 4444): Connection Refused
+2024-08-28 00:50:30 - Health Checking at 127.0.0.1:4444: OK
