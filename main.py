@@ -199,8 +199,6 @@ class LoadBalancerUI(tk.Tk):
         self.log_message("Load Balancer Stopped")
 
     def update_topology(self):
-        self.canvas.delete("all")
-
         # Get canvas size
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
@@ -209,68 +207,106 @@ class LoadBalancerUI(tk.Tk):
         center_x = canvas_width / 2
         center_y = canvas_height / 2
 
-        # Draw Load Balancer (top center)
-        lb_width, lb_height = 120, 50
-        lb_x, lb_y = center_x, center_y - canvas_height / 3 
-        self.canvas.create_rectangle(lb_x - lb_width // 2, lb_y - lb_height // 2, lb_x + lb_width // 2, lb_y + lb_height // 2, fill="orange")
-        self.canvas.create_text(lb_x, lb_y, text="Load Balancer", font=("Arial", 12, "bold"))
+        # Draw Load Balancer (top center) if not already drawn
+        lb_tag = "load_balancer"
+        if not self.canvas.find_withtag(lb_tag):
+            lb_width, lb_height = 120, 50
+            lb_x, lb_y = center_x, center_y - canvas_height / 3
+            self.canvas.create_rectangle(
+                lb_x - lb_width // 2, lb_y - lb_height // 2,
+                lb_x + lb_width // 2, lb_y + lb_height // 2,
+                fill="orange", tags=lb_tag
+            )
+            self.canvas.create_text(
+                lb_x, lb_y, text="Load Balancer",
+                font=("Arial", 12, "bold"), tags=lb_tag
+            )
 
-        # Draw Servers
+        # Draw or update Servers
         servers = self.server_listbox.get(0, tk.END)
         num_servers = len(servers)
         server_radius = 30
         spacing = 150  # Horizontal spacing between servers
         start_x = center_x - (num_servers - 1) * spacing / 2
 
+        existing_servers = {item for item in self.canvas.find_withtag("server")}
+
         if num_servers > 0:
             servers_status = {}
-            if(self.load_balancer):
+            if self.load_balancer:
                 servers_status = self.load_balancer.get_server_status()
+
             for i, server in enumerate(servers):
-                # Write server details in the circle
                 server_details = server.split(' (')[1].rstrip(')')
                 server_ip, server_port = server_details.split(':')
-                ip_text = f"IP: {server_ip}"
-                port_text = f"Port: {server_port}"
-                status={}
-                server_color='lightblue'
-                if(self.load_balancer):
-                    # Fetch health and request count for this server
-                    status = servers_status.get((server_ip, int(server_port)), {'health': 'Unknown', 'requests': 0})
-                    health_text = f"Health: {status['health']}"
-                    request_count_text = f"Requests: {status['requests']}"
-                    if(status['health']=="Unhealthy"):
-                        server_color = 'red'
-                else:
-                    health_text = f"Health: unknown"
-                    request_count_text = f"Requests: 0"
-
+                ip_port = (server_ip, int(server_port))
+                status = servers_status.get(ip_port, {'health': 'Unknown', 'requests': 0})
+                health = status['health']
+                server_color = 'red' if health == "Unhealthy" else 'lightblue'
                 server_x = start_x + i * spacing
                 server_y = center_y + 30
-                
-                
-                # Draw server circle
-                self.canvas.create_oval(server_x - server_radius, server_y - server_radius, server_x + server_radius, server_y + server_radius, fill=server_color)
+                server_tag = f"server_{server_ip}_{server_port}"
 
-                # Draw server name inside the circle
-                server_name = server.split(' (')[0]
-                self.canvas.create_text(server_x, server_y, text=server_name, font=("Arial", 8, "bold"))
+                if not self.canvas.find_withtag(server_tag):
+                    # New server, draw it
+                    self.canvas.create_oval(
+                        server_x - server_radius, server_y - server_radius,
+                        server_x + server_radius, server_y + server_radius,
+                        fill=server_color, tags=("server", server_tag)
+                    )
 
-                
+                    # Draw server name inside the circle
+                    server_name = server.split(' (')[0]
+                    self.canvas.create_text(
+                        server_x, server_y, text=server_name,
+                        font=("Arial", 8, "bold"), tags=(server_tag,)
+                    )
 
-                detail_y_start = server_y + server_radius + 10
-                server_font_size=8
-                server_font='Arial'
-                self.canvas.create_text(server_x, detail_y_start, text=ip_text, font=(server_font, server_font_size))
-                self.canvas.create_text(server_x, detail_y_start + 15, text=port_text, font=(server_font, server_font_size))
-                self.canvas.create_text(server_x, detail_y_start + 30, text=health_text, font=(server_font, server_font_size))
-                self.canvas.create_text(server_x, detail_y_start + 45, text=request_count_text, font=(server_font, server_font_size))
-                line_color = 'green'
-                if(server_color == 'red'):
-                    line_color = 'red'
-                # Draw connection line to the load balancer
-                self.canvas.create_line(lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius, fill=line_color, width=2)
-    
+                    # Draw additional server details below the circle
+                    detail_y_start = server_y + server_radius + 10
+                    self.canvas.create_text(
+                        server_x, detail_y_start, text=f"IP: {server_ip}",
+                        font=("Arial", 8), tags=(server_tag,)
+                    )
+                    self.canvas.create_text(
+                        server_x, detail_y_start + 15, text=f"Port: {server_port}",
+                        font=("Arial", 8), tags=(server_tag,)
+                    )
+                    self.canvas.create_text(
+                        server_x, detail_y_start + 30, text=f"Health: {health}",
+                        font=("Arial", 8), tags=(server_tag,)
+                    )
+                    self.canvas.create_text(
+                        server_x, detail_y_start + 45, text=f"Requests: {status['requests']}",
+                        font=("Arial", 8), tags=(server_tag,)
+                    )
+
+                    # Draw connection line to the load balancer
+                    line_color = 'green' if health != "Unhealthy" else 'red'
+                    self.canvas.create_line(
+                        lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius,
+                        fill=line_color, width=2, tags=(server_tag,)
+                    )
+                else:
+                    # Update existing server details
+                    self.canvas.itemconfig(
+                        self.canvas.find_withtag(server_tag)[0], fill=server_color
+                    )
+                    self.canvas.itemconfig(
+                        self.canvas.find_withtag(server_tag)[2], text=f"Health: {health}"
+                    )
+                    self.canvas.itemconfig(
+                        self.canvas.find_withtag(server_tag)[3], text=f"Requests: {status['requests']}"
+                    )
+
+                # Remove this server from the existing list
+                existing_servers.discard(self.canvas.find_withtag(server_tag)[0])
+
+        # Remove servers that are no longer in the list
+        for item in existing_servers:
+            self.canvas.delete(item)
+
+
     def log_message(self, message):
         self.logger.log_message(message=message)
 
