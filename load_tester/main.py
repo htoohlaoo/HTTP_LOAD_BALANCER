@@ -67,10 +67,10 @@ if __name__ == "__main__":
     )
     parser.add_argument('--target_url', type=str, required=True, help='The target URL for the load test.\nExample: http://127.0.0.1:8080')
     parser.add_argument('--total_requests', type=int, required=True, help='Total number of requests to send.\nExample: 1000')
-    parser.add_argument('--concurrent_threads', type=int, required=True, help='Number of concurrent threads to use.\nExample: 10')
+    parser.add_argument('--threads', type=int, required=True, help='Number of concurrent threads to use.\nExample: 10')
     
     # Parse the arguments
     args = parser.parse_args()
 
     # Start the load test with provided arguments
-    load_test(args.target_url, args.total_requests, args.concurrent_threads)
+    load_test(args.target_url, args.total_requests, args.threads)

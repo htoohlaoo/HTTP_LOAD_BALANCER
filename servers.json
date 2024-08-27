@@ -1,22 +1,22 @@
 [
     {
         "name": "One",
-        "ip": "localhost",
+        "ip": "127.0.0.1",
         "port": 8080
     },
     {
         "name": "Two",
-        "ip": "localhost",
+        "ip": "127.0.0.1",
         "port": 8090
     },
     {
         "name": "Three",
-        "ip": "localhost",
+        "ip": "127.0.0.1",
         "port": 8100
     },
     {
-        "name": "Service",
-        "ip": "localhost",
-        "port": 3000
+        "name": "Fault",
+        "ip": "127.1.1.0",
+        "port": 4444
     }
 ]

@@ -5,6 +5,7 @@ import threading
 from loadbalancer import LoadBalancer
 import datetime
 from logger import Logger
+
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -49,10 +50,11 @@ class LoadBalancerUI(tk.Tk):
         # Algorithm Selection
         ttk.Label(self.control_frame, text="Select Algorithm:").pack(side="left", padx=10)
         self.algorithm_var = tk.StringVar()
+        self.algorithm_list = ["Round Robin", "Least Connections", "IP Hash"]
         self.algorithm_combobox = ttk.Combobox(
             self.control_frame, 
             textvariable=self.algorithm_var, 
-            values=["Round Robin", "Least Connections", "IP Hash"]
+            values = self.algorithm_list
         )
         self.algorithm_combobox.current(0)  # Set default to "Round Robin"
         self.algorithm_combobox.pack(side="left", padx=10, pady=5)
@@ -80,6 +82,7 @@ class LoadBalancerUI(tk.Tk):
         self.logger = Logger(self.log_text)
 
         self.load_servers_from_json()
+
 
         # Bind the canvas resize event to update topology
         self.canvas.bind("<Configure>", lambda event: self.update_topology())
@@ -177,9 +180,11 @@ class LoadBalancerUI(tk.Tk):
             server_name, server_ip_port = server_entry.split(' (')
             server_ip, server_port = server_ip_port.rstrip(')').split(':')
             backend_servers.append((server_ip, int(server_port)))
-        
-        self.load_balancer = LoadBalancer(port=7000, backend_servers=backend_servers, status_update_callback=self.log_message,algorithm=self.algorithm_combobox.current())
-        self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=True)
+        selected_algorithm = self.algorithm_combobox.current()
+        if selected_algorithm not in self.algorithm_list:
+            selected_algorithm = 'round_robin'
+        self.load_balancer = LoadBalancer(port=3333, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm)
+        self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=False)
         self.load_balancer_thread.start()
         self.status_label.config(text="Status: Running")
 
@@ -218,24 +223,40 @@ class LoadBalancerUI(tk.Tk):
         start_x = center_x - (num_servers - 1) * spacing / 2
 
         if num_servers > 0:
+            servers_status = {}
+            if(self.load_balancer):
+                servers_status = self.load_balancer.get_server_status()
             for i, server in enumerate(servers):
+                # Write server details in the circle
+                server_details = server.split(' (')[1].rstrip(')')
+                server_ip, server_port = server_details.split(':')
+                ip_text = f"IP: {server_ip}"
+                port_text = f"Port: {server_port}"
+                status={}
+                server_color='lightblue'
+                if(self.load_balancer):
+                    # Fetch health and request count for this server
+                    status = servers_status.get((server_ip, int(server_port)), {'health': 'Unknown', 'requests': 0})
+                    health_text = f"Health: {status['health']}"
+                    request_count_text = f"Requests: {status['requests']}"
+                    if(status['health']=="Unhealthy"):
+                        server_color = 'red'
+                else:
+                    health_text = f"Health: unknown"
+                    request_count_text = f"Requests: 0"
+
                 server_x = start_x + i * spacing
                 server_y = center_y + 30
-
+                
+                
                 # Draw server circle
-                self.canvas.create_oval(server_x - server_radius, server_y - server_radius, server_x + server_radius, server_y + server_radius, fill="lightblue")
+                self.canvas.create_oval(server_x - server_radius, server_y - server_radius, server_x + server_radius, server_y + server_radius, fill=server_color)
 
                 # Draw server name inside the circle
                 server_name = server.split(' (')[0]
                 self.canvas.create_text(server_x, server_y, text=server_name, font=("Arial", 8, "bold"))
 
-                # Draw server details below the circle
-                server_details = server.split(' (')[1].rstrip(')')
-                server_ip, server_port = server_details.split(':')
-                ip_text = f"IP: {server_ip}"
-                port_text = f"Port: {server_port}"
-                health_text = "Health: Unknown"  # Placeholder for health status
-                request_count_text = "Requests: 0"  # Placeholder for request count
+                
 
                 detail_y_start = server_y + server_radius + 10
                 server_font_size=8
@@ -244,9 +265,11 @@ class LoadBalancerUI(tk.Tk):
                 self.canvas.create_text(server_x, detail_y_start + 15, text=port_text, font=(server_font, server_font_size))
                 self.canvas.create_text(server_x, detail_y_start + 30, text=health_text, font=(server_font, server_font_size))
                 self.canvas.create_text(server_x, detail_y_start + 45, text=request_count_text, font=(server_font, server_font_size))
-
+                line_color = 'green'
+                if(server_color == 'red'):
+                    line_color = 'red'
                 # Draw connection line to the load balancer
-                self.canvas.create_line(lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius, fill="green", width=2)
+                self.canvas.create_line(lb_x, lb_y + lb_height // 2, server_x, server_y - server_radius, fill=line_color, width=2)
     
     def log_message(self, message):
         self.logger.log_message(message=message)
