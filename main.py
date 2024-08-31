@@ -12,6 +12,8 @@ class LoadBalancerUI(tk.Tk):
         self.title("HTTP Load Balancer")
         self.geometry("600x400")
 
+        self.is_lb_running = False
+
         #configurations directories set to current working directory
         self.serverfile_directory = os.getcwd()
         self.logfile_directory = os.getcwd()
@@ -70,7 +72,7 @@ class LoadBalancerUI(tk.Tk):
         self.start_button = ttk.Button(self.control_frame, text="Start Load Balancer", command=self.start_load_balancer)
         self.start_button.pack(side="left", padx=10, pady=5)
 
-        self.stop_button = ttk.Button(self.control_frame, text="Stop Load Balancer", command=self.stop_load_balancer)
+        self.stop_button = ttk.Button(self.control_frame, text="Stop Load Balancer", command=self.stop_load_balancer,state=tk.DISABLED)
         self.stop_button.pack(side="left", padx=10, pady=5)
 
         # Status Label
@@ -106,13 +108,16 @@ class LoadBalancerUI(tk.Tk):
             name, ip_port = server_entry.split(' (')
             ip, port = ip_port.rstrip(')').split(':')
             servers.append({"name": name, "ip": ip, "port": int(port)})
-        
-        with open('servers.json', 'w') as f:
+        serversFile = 'servers.json'
+        serversFile = os.path.join(serversFile)
+        with open(serversFile, 'w') as f:
             json.dump(servers, f, indent=4)
 
     def load_servers_from_json(self):
+        serversFile = "servers.json"
+        serversFile = os.path.join(self.serverfile_directory,serversFile)
         try:
-            with open('servers.json', 'r') as f:
+            with open(serversFile, 'r') as f:
                 servers = json.load(f)
                 for server in servers:
                     server_entry = f"{server['name']} ({server['ip']}:{server['port']})"
@@ -186,29 +191,38 @@ class LoadBalancerUI(tk.Tk):
             self.save_servers_to_json()
         self.update_topology()
 
+    def is_load_balancer_running(self):
+        return isinstance(self.load_balancer_thread,threading.Thread) and self.load_balancer_thread.is_alive()
+    
     def start_load_balancer(self):
-        backend_servers = []
-        for server_entry in self.server_listbox.get(0, tk.END):
-            server_name, server_ip_port = server_entry.split(' (')
-            server_ip, server_port = server_ip_port.rstrip(')').split(':')
-            backend_servers.append((server_ip, int(server_port)))
-        selected_algorithm = self.algorithm_combobox.current()
-        if selected_algorithm not in self.algorithm_list:
-            selected_algorithm = 'round_robin'
-        self.load_balancer = LoadBalancer(port=3333, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm)
-        self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=False)
-        self.load_balancer_thread.start()
-        self.status_label.config(text="Status: Running")
+        if(not self.is_load_balancer_running()):
+            print('New Thread Starts...')
+            backend_servers = []
+            for server_entry in self.server_listbox.get(0, tk.END):
+                server_name, server_ip_port = server_entry.split(' (')
+                server_ip, server_port = server_ip_port.rstrip(')').split(':')
+                backend_servers.append((server_ip, int(server_port)))
+            selected_algorithm = self.algorithm_combobox.current()
+            if selected_algorithm not in self.algorithm_list:
+                selected_algorithm = 'round_robin'
+            self.load_balancer = LoadBalancer(port=8898, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm)
+            self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=True)
+            self.load_balancer_thread.start()
+            self.status_label.config(text="Status: Running")
+            self.start_button.config(state=tk.DISABLED)
+            self.stop_button.config(state=tk.NORMAL)
 
     def stop_load_balancer(self):
         print("stop loadbalancer")
-        if self.load_balancer:
+        if isinstance(self.load_balancer,LoadBalancer) and isinstance(self.load_balancer_thread,threading.Thread):
             self.load_balancer.stop()
-        if self.load_balancer_thread:
             self.load_balancer_thread.join(timeout=5)  # Timeout to prevent indefinite blocking
             self.load_balancer_thread = None  # Reset thread reference after joining
-        self.status_label.config(text="Status: Stopped")
-        self.log_message("Load Balancer Stopped")
+            self.load_balancer = None #reset load_balancer reference
+            self.start_button.config(state=tk.NORMAL)
+            self.stop_button.config(state=tk.DISABLED)
+            self.status_label.config(text="Status: Stopped")
+            self.log_message("Load Balancer Stopped")
 
     def update_topology(self):
         # Get canvas size

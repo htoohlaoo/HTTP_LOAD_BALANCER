@@ -1,6 +1,6 @@
 import argparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
+import json
 class RequestCounterHandler(BaseHTTPRequestHandler):
     request_count = 0  # Class variable to keep track of the number of requests
 
@@ -9,17 +9,21 @@ class RequestCounterHandler(BaseHTTPRequestHandler):
         if self.path == '/':
             # Increment the request count
             RequestCounterHandler.request_count += 1
-        
+            print("Counter:", RequestCounterHandler.request_count)
+
         # Send response status code
         self.send_response(200)
-        
+
         # Send headers
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'application/json')
         self.end_headers()
-        
-        # Send the request count as the response body
-        response_content = f"<html><body><h1>Request count: {RequestCounterHandler.request_count}</h1></body></html>"
-        self.wfile.write(response_content.encode('utf-8'))
+
+        # Prepare JSON response content
+        response_content = { "count": RequestCounterHandler.request_count }
+        json_response = json.dumps(response_content)
+
+        # Send the JSON response
+        self.wfile.write(json_response.encode('utf-8'))
 
 def run(server_class=HTTPServer, handler_class=RequestCounterHandler, ip='127.0.0.1', port=8080):
     server_address = (ip, port)

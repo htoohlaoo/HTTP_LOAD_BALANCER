@@ -99,19 +99,20 @@ class LoadBalancer:
         else:
             backend_addr = random.choice(self.healthy_servers)  # Default to random if unknown algorithm
             self.status_update_callback(f"Selected backend server {backend_addr} randomly due to unknown algorithm.")
-
+        backend_socket = None
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as backend_socket:
                 backend_socket.connect(backend_addr)
                 backend_socket.sendall(request_data.encode())
                 response_data = backend_socket.recv(1024)
-
+                print(response_data)
             client_socket.sendall(response_data)
             self.status_update_callback(f"Successfully forwarded request to {backend_addr} and sent response back to client IP {client_ip}.")
         except Exception as e:
             self.status_update_callback(f"Error communicating with backend server {backend_addr}")
         finally:
             client_socket.close()
+            if(backend_socket): backend_socket.close()
             if self.algorithm == 'least_connection':
                 self.connection_count[backend_addr] -= 1  # Decrement connection count after response
                 #self.status_update_callback(f"Decremented connection count for server {backend_addr}.")
