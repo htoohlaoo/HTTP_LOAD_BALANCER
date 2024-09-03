@@ -233,6 +233,7 @@ class LoadBalancerUI(tk.Tk):
             self.stop_button.config(state=tk.NORMAL)
             self.add_server_button.config(state=tk.DISABLED)
             self.remove_server_button.config(state=tk.DISABLED)
+            self.config_button.config(state=tk.DISABLED)
 
 
     def stop_load_balancer(self):
@@ -419,7 +420,7 @@ class LoadBalancerUI(tk.Tk):
         self.configfile_directory = config_data.get('configfile_directory')
         self.maximum_servers = config_data.get('maximum_servers')
         self.health_check_circle = config_data.get('health_check_circle')
-        self.lb_port = config_data.get('port')
+        self.lb_port = config_data.get('lb_port')
     def save_config_to_json(self):
             # Create a dictionary with the configuration data
             config_data = {
@@ -427,7 +428,8 @@ class LoadBalancerUI(tk.Tk):
                 "logfile_directory": self.logfile_directory,
                 "configfile_directory": self.configfile_directory,
                 "health_check_circle": self.health_check_circle,
-                "maximum_servers": self.maximum_servers
+                "maximum_servers": self.maximum_servers,
+                "lb_port":self.lb_port
             }
 
             # Create the path for config
