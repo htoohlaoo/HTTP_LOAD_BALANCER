@@ -1,3 +1,4 @@
+import time
 import tkinter as tk
 from tkinter import ttk
 import json
@@ -6,6 +7,8 @@ from loadbalancer import LoadBalancer
 import datetime
 from logger import Logger
 import os
+import sys
+
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -80,8 +83,8 @@ class LoadBalancerUI(tk.Tk):
         self.status_label.pack(side="left", padx=20, pady=5)
 
         # Add Config button
-        config_button = tk.Button(self.control_frame, text="Config", command=self.open_config_popup)
-        config_button.pack(side=tk.LEFT)
+        self.config_button = tk.Button(self.control_frame, text="Config", command=self.open_config_popup)
+        self.config_button.pack(side=tk.LEFT)
 
         # Logs/Status Section
         self.log_frame = ttk.LabelFrame(self, text="Logs")
@@ -89,7 +92,8 @@ class LoadBalancerUI(tk.Tk):
 
         self.log_text = tk.Text(self.log_frame, height=10, state="disabled")
         self.log_text.pack(fill="both", padx=10, pady=10, expand=True)
-
+        
+        
         self.load_balancer = None
         self.load_balancer_thread = None
         print("Logfile : ",self.logfile_directory)
@@ -100,8 +104,15 @@ class LoadBalancerUI(tk.Tk):
 
         # Bind the canvas resize event to update topology
         self.canvas.bind("<Configure>", lambda event: self.update_topology())
+    def restart_program(self):
+        """Restart the current program."""
+        print("Restarting program...")
+        # python = sys.executable
+        # os.execl(python, python, *sys.argv)
+        self.stop_load_balancer()
+        self.start_load_balancer()
 
-    def save_servers_to_json(self):
+    def save_servers_to_json_and_restart(self):
         servers = []
         for i in range(self.server_listbox.size()):
             server_entry = self.server_listbox.get(i)
@@ -109,10 +120,12 @@ class LoadBalancerUI(tk.Tk):
             ip, port = ip_port.rstrip(')').split(':')
             servers.append({"name": name, "ip": ip, "port": int(port)})
         serversFile = 'servers.json'
-        serversFile = os.path.join(serversFile)
+        serversFile = os.path.join(self.serverfile_directory,serversFile)
+        print(serversFile , " Server file location")
         with open(serversFile, 'w') as f:
             json.dump(servers, f, indent=4)
-
+        # time.sleep(3)
+        
     def load_servers_from_json(self):
         serversFile = "servers.json"
         serversFile = os.path.join(self.serverfile_directory,serversFile)
@@ -158,6 +171,12 @@ class LoadBalancerUI(tk.Tk):
         cancel_button.pack(side="left", padx=10)
 
     def add_server(self):
+        servers = len(self.server_listbox.get(0, tk.END))
+        print(self.maximum_servers , ' Max ')
+        if(servers >= self.maximum_servers):
+            self.log_message(f"Denied adding more server! Max servers is : {self.maximum_servers}")
+            self.add_server_window.destroy()#close the pop up
+            return
         server_name = self.server_name_entry.get()
         server_ip = self.server_ip_entry.get()
         server_port = self.server_port_entry.get()
@@ -170,7 +189,7 @@ class LoadBalancerUI(tk.Tk):
                 self.log_message(f"Added {server_entry}")
                 if self.load_balancer:
                     self.load_balancer.backend_servers.append((server_ip, server_port))
-                self.save_servers_to_json()
+                self.save_servers_to_json_and_restart()
             except ValueError:
                 self.log_message("Invalid port number. Please enter a valid integer.")
         
@@ -188,8 +207,9 @@ class LoadBalancerUI(tk.Tk):
             if self.load_balancer:
                 server_ip, server_port = server_entry.split(' (')[1].rstrip(')').split(':')
                 self.load_balancer.backend_servers = [s for s in self.load_balancer.backend_servers if s[0] != server_ip or s[1] != int(server_port)]
-            self.save_servers_to_json()
-        self.update_topology()
+            self.update_topology()
+            self.save_servers_to_json_and_restart()
+        
 
     def is_load_balancer_running(self):
         return isinstance(self.load_balancer_thread,threading.Thread) and self.load_balancer_thread.is_alive()
@@ -205,12 +225,15 @@ class LoadBalancerUI(tk.Tk):
             selected_algorithm = self.algorithm_combobox.current()
             if selected_algorithm not in self.algorithm_list:
                 selected_algorithm = 'round_robin'
-            self.load_balancer = LoadBalancer(port=8898, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm)
+            self.load_balancer = LoadBalancer(port=self.lb_port, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm,health_check_circle=self.health_check_circle)
             self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=True)
             self.load_balancer_thread.start()
             self.status_label.config(text="Status: Running")
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
+            self.add_server_button.config(state=tk.DISABLED)
+            self.remove_server_button.config(state=tk.DISABLED)
+
 
     def stop_load_balancer(self):
         print("stop loadbalancer")
@@ -223,7 +246,10 @@ class LoadBalancerUI(tk.Tk):
             self.stop_button.config(state=tk.DISABLED)
             self.status_label.config(text="Status: Stopped")
             self.log_message("Load Balancer Stopped")
-
+            self.add_server_button.config(state=tk.NORMAL)
+            self.remove_server_button.config(state=tk.NORMAL)
+            self.config_button.config(state=tk.NORMAL)
+        self.update_topology()
     def update_topology(self):
         # Get canvas size
         canvas_width = self.canvas.winfo_width()
@@ -248,7 +274,7 @@ class LoadBalancerUI(tk.Tk):
             fill="orange", tags=lb_tag
         )
         self.canvas.create_text(
-            lb_x, lb_y, text="Load Balancer",
+            lb_x, lb_y, text=f"Load Balancer\n{self.lb_port}",
             font=("Arial", 12, "bold"), tags=lb_tag
         )
 
@@ -321,6 +347,7 @@ class LoadBalancerUI(tk.Tk):
             )
 
     def open_config_popup(self):
+        self.config_button.config(state=tk.DISABLED)
         # Create a new top-level window for JSON input
         self.popup = tk.Toplevel(self)
         self.popup.title("Configure Load Balancer")
@@ -328,7 +355,7 @@ class LoadBalancerUI(tk.Tk):
         label = tk.Label(self.popup, text="Enter JSON Configuration:")
         label.pack(padx=10, pady=10)
 
-        self.config_json = tk.Text(self.popup, width=40, height=10)
+        self.config_json = tk.Text(self.popup, width=50, height=30)
         self.config_json.pack(padx=10, pady=10)
 
         # Set default JSON template
@@ -337,15 +364,20 @@ class LoadBalancerUI(tk.Tk):
             "logfile_directory": self.logfile_directory,
             "configfile_directory":self.configfile_directory,
             "maximum_servers": self.maximum_servers,
-            "health_check_circle": self.health_check_circle
+            "health_check_circle": self.health_check_circle,
+            "lb_port":self.lb_port
         }
         self.config_json.insert(tk.END, json.dumps(default_json, indent=4))
 
         apply_button = tk.Button(self.popup, text="Apply", command=self.save_config)
         apply_button.pack(side=tk.LEFT, padx=5, pady=10)
 
-        cancel_button = tk.Button(self.popup, text="Cancel", command=self.popup.destroy)
+        cancel_button = tk.Button(self.popup, text="Cancel", command=self.cancel_config_edit)
         cancel_button.pack(side=tk.RIGHT, padx=5, pady=10)
+
+    def cancel_config_edit(self):
+        self.config_button.config(state=tk.NORMAL)
+        self.popup.destroy()
     def save_config(self):
         try:
             config = json.loads(self.config_json.get("1.0", tk.END).strip())
@@ -356,8 +388,10 @@ class LoadBalancerUI(tk.Tk):
             self.configfile_directory = config.get('configfile_directory')
             self.maximum_servers = config.get('maximum_servers')
             self.health_check_circle = config.get('health_check_circle')
+            self.lb_port = config.get('lb_port')
             self.save_config_to_json()
             self.popup.destroy()
+            self.config_button.config(state=tk.NORMAL)
         except json.JSONDecodeError:
             self.show_error_popup("Invalid JSON", "The provided JSON is invalid. Please correct it and try again.")
     
@@ -385,6 +419,7 @@ class LoadBalancerUI(tk.Tk):
         self.configfile_directory = config_data.get('configfile_directory')
         self.maximum_servers = config_data.get('maximum_servers')
         self.health_check_circle = config_data.get('health_check_circle')
+        self.lb_port = config_data.get('port')
     def save_config_to_json(self):
             # Create a dictionary with the configuration data
             config_data = {
@@ -406,6 +441,7 @@ class LoadBalancerUI(tk.Tk):
 
     def log_message(self, message):
         self.logger.log_message(message=message)
+        self.log_text.see(tk.END)
 
 if __name__ == "__main__":
     app = LoadBalancerUI()
