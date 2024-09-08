@@ -8,6 +8,7 @@ import datetime
 from logger import Logger
 import os
 import sys
+from tkinter import font
 
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
@@ -27,9 +28,9 @@ class LoadBalancerUI(tk.Tk):
         # Server List Section
         self.server_frame = ttk.LabelFrame(self, text="Server List")
         self.server_frame.pack(fill="both", padx=10, pady=10, expand=True)
-
+        server_font = font.Font(family="Helvetica", size=16)
         # Server Listbox
-        self.server_listbox = tk.Listbox(self.server_frame, height=8)
+        self.server_listbox = tk.Listbox(self.server_frame, height=5)
         self.server_listbox.pack(side="left", fill="both", padx=10, pady=10, expand=True)
 
         # Server List Scrollbar
@@ -50,10 +51,14 @@ class LoadBalancerUI(tk.Tk):
         button_frame = ttk.Frame(self.server_frame)
         button_frame.pack(side="left", padx=10, pady=5)
 
-        self.add_server_button = ttk.Button(button_frame, text="Add Server", command=self.show_add_server_form)
+        add_btn_style = ttk.Style()
+        add_btn_style.configure("Add.TButton", background="#6aa84f", foreground="#ffffff")
+        remove_btn_style = ttk.Style()
+        remove_btn_style.configure("Remove.TButton", background="#cc0000", foreground="#ffffff")
+        self.add_server_button = ttk.Button(button_frame, text="Add Server", command=self.show_add_server_form,style="Add.TButton")
         self.add_server_button.pack(side="left", padx=5)
 
-        self.remove_server_button = ttk.Button(button_frame, text="Remove Server", command=self.remove_server)
+        self.remove_server_button = ttk.Button(button_frame, text="Remove Server", command=self.remove_server,style="Remove.TButton")
         self.remove_server_button.pack(side="left", padx=5)
 
         # Load Balancer Control Section
@@ -71,11 +76,17 @@ class LoadBalancerUI(tk.Tk):
         self.algorithm_combobox.current(0)  # Set default to "Round Robin"
         self.algorithm_combobox.pack(side="left", padx=10, pady=5)
 
+        stop_btn_style = ttk.Style()
+        stop_btn_style.configure("Stop.TButton", background="#800020", foreground="#ffffff")
+        start_btn_style = ttk.Style()
+        start_btn_style.configure("Start.TButton", background="#38761d", foreground="#ffffff")
+        
+
         # Start/Stop Buttons
-        self.start_button = ttk.Button(self.control_frame, text="Start Load Balancer", command=self.start_load_balancer)
+        self.start_button = ttk.Button(self.control_frame, text="Start Load Balancer", command=self.start_load_balancer,style='Start.TButton')
         self.start_button.pack(side="left", padx=10, pady=5)
 
-        self.stop_button = ttk.Button(self.control_frame, text="Stop Load Balancer", command=self.stop_load_balancer,state=tk.DISABLED)
+        self.stop_button = ttk.Button(self.control_frame, text="Stop Load Balancer", command=self.stop_load_balancer,state=tk.DISABLED,style='Stop.TButton')
         self.stop_button.pack(side="left", padx=10, pady=5)
 
         # Status Label
@@ -83,10 +94,10 @@ class LoadBalancerUI(tk.Tk):
         self.status_label.pack(side="left", padx=20, pady=5)
 
         # Add Config button
-        self.config_button = tk.Button(self.control_frame, text="Config", command=self.open_config_popup)
+        self.config_button = tk.Button(self.control_frame, text="Config", command=self.open_config_popup,background="#cfe2f3")
         self.config_button.pack(side=tk.LEFT)
 
-        # Logs/Status Section
+        # Logs/Status Sectionbackground
         self.log_frame = ttk.LabelFrame(self, text="Logs")
         self.log_frame.pack(fill="both", padx=10, pady=10, expand=True)
 
@@ -96,7 +107,6 @@ class LoadBalancerUI(tk.Tk):
         
         self.load_balancer = None
         self.load_balancer_thread = None
-        print("Logfile : ",self.logfile_directory)
         self.logger = Logger(self.log_text,self.logfile_directory)
 
         self.load_servers_from_json()
@@ -275,7 +285,7 @@ class LoadBalancerUI(tk.Tk):
             fill="orange", tags=lb_tag
         )
         self.canvas.create_text(
-            lb_x, lb_y, text=f"Load Balancer\n{self.lb_port}",
+            lb_x, lb_y, text=f"Load Balancer\n{'        '} {self.lb_port}",
             font=("Arial", 12, "bold"), tags=lb_tag
         )
 

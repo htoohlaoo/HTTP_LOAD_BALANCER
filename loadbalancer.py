@@ -6,7 +6,7 @@ import threading
 import hashlib
 import signal
 import sys
-from rate_limiter import RateLimiter
+
 
 class LoadBalancer:
     def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4):
@@ -22,7 +22,7 @@ class LoadBalancer:
         self.connection_count = {server: 0 for server in backend_servers}  # For least connections
         self.server_status = {server: {'health': 'Unknown', 'requests': 0} for server in backend_servers}
         self.health_check_circle = health_check_circle
-        self.rate_limiter = RateLimiter(20,10)
+        
 
     def stop(self):
         self.running = False
@@ -38,7 +38,7 @@ class LoadBalancer:
             with self.lock:
                 for server in self.backend_servers:
                     try:
-                        response = requests.get(f'http://{server[0]}:{server[1]}/health')
+                        response = requests.get(f'http://{server[0]}:{server[1]}')
                         if response.status_code == 200:
                             if server not in self.healthy_servers:
                                 self.healthy_servers.append(server)

@@ -4,5 +4,5 @@
     "configfile_directory": "",
     "health_check_circle": 2,
     "maximum_servers": 4,
-    "lb_port": 5555
+    "lb_port": 6556
 }
