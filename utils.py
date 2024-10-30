@@ -1,37 +1,37 @@
-import time
-import threading
+import os
+import psutil
+import socket
 
-class Singleton(type):
-    _instances = {}
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super().__call__(*args, **kwargs)
-        return cls._instances[cls]
- 
-class ControlledThread(threading.Thread):
-    def __init__(self, target=None, args=(), kwargs=None):
-        super().__init__()
-        self._stop_event = threading.Event()
-        self._pause_event = threading.Event()
-        self._pause_event.set()  # Initially, the thread is not paused
-        self.target = target
-        self.args = args
-        self.kwargs = kwargs if kwargs is not None else {}
+def clear_port(port):
+    # Find the process using the specified port
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.laddr.port == port:
+            pid = conn.pid
+            if pid is not None:
+                try:
+                    # Terminate the process
+                    p = psutil.Process(pid)
+                    p.terminate()  # Or you can use p.kill() for a more forceful kill
+                    p.wait(timeout=3)
+                    print(f"Process {pid} on port {port} terminated successfully.")
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+                    print(f"Error terminating process: {e}")
+            else:
+                print(f"No process found using port {port}.")
+            return
 
-    def run(self):
-        if self.target:  # Ensure there's a target function
-            while not self._stop_event.is_set():
-                self._pause_event.wait()  # Block if paused
-                self.target(*self.args, **self.kwargs)  # Call the target function
-                time.sleep(1)  # Optional: Add a sleep if necessary
+    print(f"No process found using port {port}.")
 
-    def stop(self):
-        self._stop_event.set()
-        self.resume()  # Resume to allow the thread to exit if paused
 
-    def pause(self):
-        self._pause_event.clear()
-
-    def resume(self):
-        self._pause_event.set()
-
+def get_current_ip_address():
+    try:
+        # Connect to an external server (Google's public DNS) to determine the local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        # This doesn't actually connect, but the OS will choose the appropriate IP address
+        s.connect(('8.8.8.8', 80))
+        ip_address = s.getsockname()[0]
+        s.close()
+        return ip_address
+    except Exception as e:
+        return None

@@ -9,6 +9,7 @@ from logger import Logger
 import os
 import sys
 from tkinter import font
+from utils import clear_port
 
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
@@ -227,6 +228,7 @@ class LoadBalancerUI(tk.Tk):
     def start_load_balancer(self):
         if(not self.is_load_balancer_running()):
             print('New Thread Starts...')
+            clear_port(self.lb_port)# clear the port's process
             backend_servers = []
             for server_entry in self.server_listbox.get(0, tk.END):
                 server_name, server_ip_port = server_entry.split(' (')
@@ -250,7 +252,7 @@ class LoadBalancerUI(tk.Tk):
         print("stop loadbalancer")
         if isinstance(self.load_balancer,LoadBalancer) and isinstance(self.load_balancer_thread,threading.Thread):
             self.load_balancer.stop()
-            self.load_balancer_thread.join(timeout=5)  # Timeout to prevent indefinite blocking
+            self.load_balancer_thread.join(5)  # Timeout to prevent indefinite blocking
             self.load_balancer_thread = None  # Reset thread reference after joining
             self.load_balancer = None #reset load_balancer reference
             self.start_button.config(state=tk.NORMAL)
@@ -309,7 +311,7 @@ class LoadBalancerUI(tk.Tk):
             ip_port = (server_ip, int(server_port))
             status = servers_status.get(ip_port, {'health': 'Unknown', 'requests': 0})
             health = status['health']
-            server_color = 'red' if health == "Unhealthy" else 'lightblue'
+            server_color = 'red' if health == "Unhealthy" else 'green'
 
             # Calculate server position
             server_x = start_x + i * spacing

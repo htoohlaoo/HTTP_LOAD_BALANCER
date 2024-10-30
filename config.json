@@ -2,7 +2,7 @@
     "serverfile_directory": "/home/anton/Desktop/python_space/http_load_balancer/servers",
     "logfile_directory": "/home/anton/Desktop/python_space",
     "configfile_directory": "",
-    "health_check_circle": 2,
+    "health_check_circle": 5,
     "maximum_servers": 4,
-    "lb_port": 6556
+    "lb_port": 9000
 }

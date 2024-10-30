@@ -6,7 +6,7 @@ import threading
 import hashlib
 import signal
 import sys
-
+from utils import get_current_ip_address
 
 class LoadBalancer:
     def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4):
@@ -22,7 +22,8 @@ class LoadBalancer:
         self.connection_count = {server: 0 for server in backend_servers}  # For least connections
         self.server_status = {server: {'health': 'Unknown', 'requests': 0} for server in backend_servers}
         self.health_check_circle = health_check_circle
-        
+        self.health_check_thread = None
+        self.handle_thread = None
 
     def stop(self):
         self.running = False
@@ -30,6 +31,10 @@ class LoadBalancer:
         try:
             if hasattr(self, 'server_socket'):
                 self.server_socket.close()
+            self.health_check_thread.join(3)
+            self.handle_thread.join(3)
+            self.health_check_circle = None
+            self.handle_thread = None
         except Exception as e:
             self.status_update_callback(f"Error closing server socket: {e}")
 
@@ -129,13 +134,12 @@ class LoadBalancer:
 
 
     def handle_client(self, client_socket):
-
+        print('Request comes in...')
         try:
             # Receive request data from the client
             request_data = client_socket.recv(1024).decode()
             client_ip = client_socket.getpeername()[0]
-            if(self.rate_limiter.is_rate_limited(client_ip)):
-                self.status_update_callback(f"IP {client_ip} exceeds rate limit")
+           
             # Check if there are healthy servers available
             if len(self.healthy_servers) <= 0:
                 error_message = "HTTP/1.1 500 Service Unavailable\r\n\r\nNo Upstream Server Available"
@@ -185,7 +189,6 @@ class LoadBalancer:
             # Decrement connection count for least_connection algorithm
             if self.algorithm == 'least_connection' and 'backend_addr' in locals():
                 self.connection_count[backend_addr] -= 1
-
             # Increment request count for the chosen server
             if 'backend_addr' in locals() and backend_addr in self.server_status:
                 self.server_status[backend_addr]['requests'] += 1
@@ -194,15 +197,20 @@ class LoadBalancer:
 
 
     def start_load_balancer(self):
-        threading.Thread(target=self.health_check, daemon=True).start()
+        self.health_check_thread = threading.Thread(target=self.health_check, daemon=True).start()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-            server_socket.bind(('localhost', self.port))
+            machine_ip = get_current_ip_address()
+            print(machine_ip)
+            if(not machine_ip):
+                machine_ip = '127.0.0.1'
+        
+            server_socket.bind((machine_ip, self.port))
             server_socket.listen()
-            self.status_update_callback(f"Load balancer is running at port: {self.port} using {self.algorithm}...")
+            self.status_update_callback(f"Load balancer is running at ip {machine_ip} port: {self.port} using {self.algorithm}...")
 
             while self.running:
                 client_socket, _ = server_socket.accept()
-                threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
+                self.handle_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
     # def start_load_balancer(self):
     #     # Signal handler for graceful shutdown
     #     def signal_handler(sig, frame):
