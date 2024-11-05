@@ -7,7 +7,7 @@ import hashlib
 import signal
 import sys
 from utils import get_current_ip_address
-
+from rate_limiter import RateLimiter
 class LoadBalancer:
     def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4):
         self.port = port
@@ -24,6 +24,7 @@ class LoadBalancer:
         self.health_check_circle = health_check_circle
         self.health_check_thread = None
         self.handle_thread = None
+        self.rate_limiter = RateLimiter()
 
     def stop(self):
         self.running = False
@@ -139,7 +140,13 @@ class LoadBalancer:
             # Receive request data from the client
             request_data = client_socket.recv(1024).decode()
             client_ip = client_socket.getpeername()[0]
-           
+            if(not self.rate_limiter.is_permitted(client_ip)):
+                print('Not Permitted...')
+                error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
+                client_socket.sendall(error_message.encode())
+                self.status_update_callback(f"Request from {client_ip} forbidden.")
+                return
+            print('Permitted')
             # Check if there are healthy servers available
             if len(self.healthy_servers) <= 0:
                 error_message = "HTTP/1.1 500 Service Unavailable\r\n\r\nNo Upstream Server Available"
@@ -203,7 +210,7 @@ class LoadBalancer:
             print(machine_ip)
             if(not machine_ip):
                 machine_ip = '127.0.0.1'
-        
+            machine_ip = '127.0.0.1'
             server_socket.bind((machine_ip, self.port))
             server_socket.listen()
             self.status_update_callback(f"Load balancer is running at ip {machine_ip} port: {self.port} using {self.algorithm}...")
