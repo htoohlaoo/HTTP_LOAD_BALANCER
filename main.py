@@ -26,6 +26,11 @@ class LoadBalancerUI(tk.Tk):
         self.health_check_circle = 5 #set default to 5 
         self.maximum_servers = 5 
         self.load_config_from_json()
+
+        #rate_limiter_configurations
+        self.limit = 60
+        self.period = 30
+        self.block_period = 60
         # Server List Section
         self.server_frame = ttk.LabelFrame(self, text="Server List")
         self.server_frame.pack(fill="both", padx=10, pady=10, expand=True)
@@ -237,7 +242,7 @@ class LoadBalancerUI(tk.Tk):
             selected_algorithm = self.algorithm_combobox.current()
             if selected_algorithm not in self.algorithm_list:
                 selected_algorithm = 'round_robin'
-            self.load_balancer = LoadBalancer(port=self.lb_port, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm,health_check_circle=self.health_check_circle)
+            self.load_balancer = LoadBalancer(port=self.lb_port, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm,health_check_circle=self.health_check_circle,rate_limit_config={"limit":self.limit,"period":self.period,"block_period":self.block_period})
             self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=True)
             self.load_balancer_thread.start()
             self.status_label.config(text="Status: Running")
@@ -378,7 +383,10 @@ class LoadBalancerUI(tk.Tk):
             "configfile_directory":self.configfile_directory,
             "maximum_servers": self.maximum_servers,
             "health_check_circle": self.health_check_circle,
-            "lb_port":self.lb_port
+            "lb_port":self.lb_port,
+            "rate_limit":self.limit,
+            "rate_period":self.period,
+            "rate_block_period":self.block_period
         }
         self.config_json.insert(tk.END, json.dumps(default_json, indent=4))
 
@@ -402,6 +410,9 @@ class LoadBalancerUI(tk.Tk):
             self.maximum_servers = config.get('maximum_servers')
             self.health_check_circle = config.get('health_check_circle')
             self.lb_port = config.get('lb_port')
+            self.limit = config.get('rate_limit')   
+            self.period = config.get('rate_period')
+            self.block_period = config.get('rate_block_period')
             self.save_config_to_json()
             self.popup.destroy()
             self.config_button.config(state=tk.NORMAL)
@@ -433,6 +444,9 @@ class LoadBalancerUI(tk.Tk):
         self.maximum_servers = config_data.get('maximum_servers')
         self.health_check_circle = config_data.get('health_check_circle')
         self.lb_port = config_data.get('lb_port')
+        self.limit = config_data.get('rate_limit')
+        self.period = config_data.get('rate_period')
+        self.block_period = config_data.get('rate_block_period')
     def save_config_to_json(self):
             # Create a dictionary with the configuration data
             config_data = {
@@ -441,7 +455,10 @@ class LoadBalancerUI(tk.Tk):
                 "configfile_directory": self.configfile_directory,
                 "health_check_circle": self.health_check_circle,
                 "maximum_servers": self.maximum_servers,
-                "lb_port":self.lb_port
+                "lb_port":self.lb_port,
+                "rate_limit":self.limit,
+                "rate_period":self.period,
+                "rate_block_period":self.block_period
             }
 
             # Create the path for config

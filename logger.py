@@ -8,7 +8,8 @@ class Logger:
         self.max_log_size = 5 * 1024 * 1024  # 5 MB
 
     def log_message(self, message):
-        # Rotate log file if needed
+        # Rotate log file if needed 72.92
+
         self.rotate_log_file_if_needed()
 
         # Get the current time

@@ -59,7 +59,7 @@ def load_test(url, total_requests, concurrent_threads):
     # Calculate and print test statistics
     duration = end_time - start_time
     successful_requests = len([result for result in results if result[2] == 200])
-    failed_requests = len([result for result in results if result[2] is None])
+    failed_requests = len([result for result in results if result[2] is None or result[2] == 403])
     print(f"\nTotal Requests: {total_requests}")
     print(f"Successful Requests: {successful_requests}")
     print(f"Failed Requests: {failed_requests}")

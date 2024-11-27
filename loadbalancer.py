@@ -9,7 +9,7 @@ import sys
 from utils import get_current_ip_address
 from rate_limiter import RateLimiter
 class LoadBalancer:
-    def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4):
+    def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4,rate_limit_config ={'limit' : 60,'period':30,'block_period':60} ):
         self.port = port
         self.backend_servers = backend_servers
         self.healthy_servers = []

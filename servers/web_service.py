@@ -10,7 +10,7 @@ class RequestCounterHandler(BaseHTTPRequestHandler):
             # Increment the request count
             RequestCounterHandler.request_count += 1
             print("Counter:", RequestCounterHandler.request_count)
-
+            
         # Send response status code
         self.send_response(200)
 
