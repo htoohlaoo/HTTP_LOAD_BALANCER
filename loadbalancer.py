@@ -8,8 +8,13 @@ import signal
 import sys
 from utils import get_current_ip_address
 from rate_limiter import RateLimiter
+import numpy as np
+import joblib
+
+from sklearn.feature_extraction.text import HashingVectorizer
+
 class LoadBalancer:
-    def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4,rate_limit_config ={'limit' : 60,'period':30,'block_period':60} ):
+    def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4,rate_limit_config ={'limit' : 60,'period':30} ):
         self.port = port
         self.backend_servers = backend_servers
         self.healthy_servers = []
@@ -24,8 +29,15 @@ class LoadBalancer:
         self.health_check_circle = health_check_circle
         self.health_check_thread = None
         self.handle_thread = None
-        self.rate_limiter = RateLimiter()
+        #rate limiter configurations
+        self.limit = rate_limit_config.get('limit')
+        self.period = rate_limit_config.get('period')
+        # self.rate_limiter = RateLimiter(redis_port=6379,limit=self.limit,period=self.period,block_period=self.block_period)
+        print("Limit: ",self.limit,"    / Period :",self.period)
+        self.rate_limiter = RateLimiter(rate_limit=self.limit,period=self.period)
 
+        self.sql_detecter = joblib.load('sql_injection_model.pkl')
+        
     def stop(self):
         self.running = False
         # Close server socket to unblock accept call if needed
@@ -134,19 +146,79 @@ class LoadBalancer:
     #             #self.status_update_callback(f"Incremented request count for server {backend_addr}. Total requests: {self.server_status[backend_addr]['requests']}.")
 
 
+    def extract_http_request(self,data):
+        """Extracts the HTTP request from raw socket data.
+
+        Args:
+            data: The raw socket data.
+
+        Returns:
+            The extracted HTTP request as a string.
+        """
+
+        request_lines = data.splitlines()
+
+        # Find the empty line separating headers and body
+        header_end = request_lines.index('')
+
+        # Extract the request line and headers
+        request_line = request_lines[0]
+        headers = request_lines[1:header_end]
+
+        # Extract the body (if present)
+        body = ''.join(request_lines[header_end + 1:])
+
+        # # Combine the request line, headers, and body
+        http_request = '\n'.join([request_line] + headers + [body])
+
+        return http_request
+
+
+    def check_request(self,request_body, sql_detection_function):
+        """
+        Checks a request body line by line using a given SQL detection function.
+
+        Args:
+            request_body: The request body string.
+            sql_detection_function: A function that takes a string as input and returns True if it contains SQL injection patterns, False otherwise.
+
+        Returns:
+            True if the request body contains SQL injection patterns, False otherwise.
+        """
+        for line in request_body.splitlines():
+            hashing_vectorizer = HashingVectorizer(n_features=2**12)
+            payload = [line]
+            payload = hashing_vectorizer.fit_transform(payload).toarray()
+            if sql_detection_function(payload):
+                return True
+        return False
+
     def handle_client(self, client_socket):
         print('Request comes in...')
         try:
             # Receive request data from the client
             request_data = client_socket.recv(1024).decode()
             client_ip = client_socket.getpeername()[0]
-            if(not self.rate_limiter.is_permitted(client_ip)):
+            print("client_ip ",client_ip)
+            
+            if(self.rate_limiter.is_rate_limited(client_ip)):
                 print('Not Permitted...')
                 error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
                 client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"Request from {client_ip} forbidden.")
+                self.status_update_callback(f"Request from {client_ip} forbidden. ( Rate limited! )")
                 return
-            print('Permitted')
+           
+
+            payload = self.extract_http_request(request_data)
+            print("Payload",payload)
+            if(self.check_request(payload,self.sql_detecter.predict)):
+                self.status_update_callback(f"SQL Injection Detected from IP : {client_ip}")
+                print('Not Permitted...')
+                error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
+                client_socket.sendall(error_message.encode())
+                self.status_update_callback(f"Request from {client_ip} forbidden. ( SQL Injection Detected! )")
+                return
+            
             # Check if there are healthy servers available
             if len(self.healthy_servers) <= 0:
                 error_message = "HTTP/1.1 500 Service Unavailable\r\n\r\nNo Upstream Server Available"
