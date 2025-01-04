@@ -185,12 +185,16 @@ class LoadBalancer:
         Returns:
             True if the request body contains SQL injection patterns, False otherwise.
         """
+        print("check....")
         for line in request_body.splitlines():
             hashing_vectorizer = HashingVectorizer(n_features=2**12)
+            print("Payload in check function",[line])
             payload = [line]
             payload = hashing_vectorizer.fit_transform(payload).toarray()
             if sql_detection_function(payload):
+                print("Detected...")
                 return True
+        print('Undetected...')
         return False
 
     def handle_client(self, client_socket):
@@ -208,10 +212,10 @@ class LoadBalancer:
                 self.status_update_callback(f"Request from {client_ip} forbidden. ( Rate limited! )")
                 return
            
-
-            payload = self.extract_http_request(request_data)
-            print("Payload",payload)
-            if(self.check_request(payload,self.sql_detecter.predict)):
+            # print("Request Data",request_data)
+            # payload = self.extract_http_request(request_data)
+            # print("Payload",payload)
+            if(self.check_request(request_data,self.sql_detecter.predict)):
                 self.status_update_callback(f"SQL Injection Detected from IP : {client_ip}")
                 print('Not Permitted...')
                 error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
