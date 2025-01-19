@@ -7,22 +7,47 @@ class Logger:
         self.log_file = os.path.join(logfile_directory,"load_balancer_logs.txt")
         self.max_log_size = 5 * 1024 * 1024  # 5 MB
 
-    def log_message(self, message):
-        # Rotate log file if needed 72.92
+    # def log_message(self, message):
+    #     # Rotate log file if needed 72.92
 
+    #     self.rotate_log_file_if_needed()
+
+    #     # Get the current time
+    #     current_time = datetime.now()  # Correct usage
+    #     formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    #     # Format the log message
+    #     log_entry = f"{formatted_time} - {message}\n"
+
+    #     # Update the log text widget
+    #     self.log_text.config(state="normal")
+    #     self.log_text.insert(tk.END, log_entry)
+    #     self.log_text.config(state="disabled")
+
+    #     # Write the log entry to a file
+    #     with open(self.log_file, "a") as log_file:
+    #         log_file.write(log_entry)
+    def log_message(self, message, danger_alert=False):
+        # Rotate log file if needed
         self.rotate_log_file_if_needed()
 
         # Get the current time
-        current_time = datetime.now()  # Correct usage
+        current_time = datetime.now()
         formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
 
         # Format the log message
         log_entry = f"{formatted_time} - {message}\n"
 
         # Update the log text widget
-        self.log_text.config(state="normal")
-        self.log_text.insert(tk.END, log_entry)
-        self.log_text.config(state="disabled")
+        self.log_text.configure(state="normal")
+
+        if danger_alert:
+            self.log_text.tag_config("red_text", foreground="red")
+            self.log_text.insert(tk.END, log_entry, "red_text")
+        else:
+            self.log_text.insert(tk.END, log_entry)
+
+        self.log_text.configure(state="disabled")
 
         # Write the log entry to a file
         with open(self.log_file, "a") as log_file:

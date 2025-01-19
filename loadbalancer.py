@@ -10,8 +10,12 @@ from utils import get_current_ip_address
 from rate_limiter import RateLimiter
 import numpy as np
 import joblib
-
+import re
+import urllib
+import json
 from sklearn.feature_extraction.text import HashingVectorizer
+from ip_blocker import IPBlocker
+from test_socket import test_port_binding
 
 class LoadBalancer:
     def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4,rate_limit_config ={'limit' : 60,'period':30} ):
@@ -21,7 +25,7 @@ class LoadBalancer:
         self.lock = threading.Lock()
         self.status_update_callback = status_update_callback
         self.update_topology_callback = update_topology_callback
-        self.running = True
+        self.running = False
         self.algorithm = algorithm
         self.current_index = 0  # For round robin
         self.connection_count = {server: 0 for server in backend_servers}  # For least connections
@@ -36,24 +40,49 @@ class LoadBalancer:
         print("Limit: ",self.limit,"    / Period :",self.period)
         self.rate_limiter = RateLimiter(rate_limit=self.limit,period=self.period)
 
-        self.sql_detecter = joblib.load('sql_injection_model.pkl')
+        self.sql_detecter = joblib.load('sql_injection_model_v2.pkl')
+        self.ip_blocker = IPBlocker(expiration_time=self.period)
         
+    # def stop(self):
+    #     self.running = False
+    #     # Close server socket to unblock accept call if needed
+    #     try:
+    #         if hasattr(self, 'server_socket'):
+    #             self.server_socket.close()
+    #         self.health_check_thread.join(3)
+    #         self.handle_thread.join(3)
+    #         self.health_check_circle = None
+    #         self.handle_thread = None
+    #     except Exception as e:
+    #         self.status_update_callback(f"Error closing server socket: {e}")
     def stop(self):
-        self.running = False
-        # Close server socket to unblock accept call if needed
         try:
+            self.running = False
             if hasattr(self, 'server_socket'):
                 self.server_socket.close()
-            self.health_check_thread.join(3)
-            self.handle_thread.join(3)
-            self.health_check_circle = None
+            if self.health_check_thread:
+                print("Stopping Health Check...")
+                self.health_check_thread.join(3)
+            if self.handle_thread:
+                self.handle_thread.join(3)
+
+            if self.handle_thread:print("Is alive",self.handle_thread.is_alive())
+            self.health_check_thread = None
             self.handle_thread = None
+            self.healthy_servers.clear()
+            self.server_status = {server: {'health': 'Unknown', 'requests': 0} for server in self.backend_servers}
+            self.connection_count.clear()
+            self.status_update_callback("Load balancer stopped successfully.")
+            time.sleep(3)
         except Exception as e:
-            self.status_update_callback(f"Error closing server socket: {e}")
+            self.status_update_callback(f"Error stopping threads: {e}")
 
     def health_check(self):
         while self.running:
             with self.lock:
+                # print("Backend servers",self.backend_servers)
+                print("Backend servers",self.healthy_servers)
+                # print('Running in health check',self.running)
                 for server in self.backend_servers:
                     try:
                         response = requests.get(f'http://{server[0]}:{server[1]}')
@@ -146,88 +175,229 @@ class LoadBalancer:
     #             #self.status_update_callback(f"Incremented request count for server {backend_addr}. Total requests: {self.server_status[backend_addr]['requests']}.")
 
 
-    def extract_http_request(self,data):
+
+
+    def extract_http_request(self, data):
         """Extracts the HTTP request from raw socket data.
 
         Args:
             data: The raw socket data.
 
         Returns:
-            The extracted HTTP request as a string.
+            The extracted HTTP request as a string, or None if extraction fails.
         """
 
-        request_lines = data.splitlines()
+        try:
+            # Decode the raw data
+            request_str = data.decode('utf-8') 
 
-        # Find the empty line separating headers and body
-        header_end = request_lines.index('')
+            # Extract the request line and headers
+            request_lines = request_str.split('\r\n') 
+            header_end = request_lines.index('') 
+            request_line = request_lines[0]
+            headers = request_lines[1:header_end]
 
-        # Extract the request line and headers
-        request_line = request_lines[0]
-        headers = request_lines[1:header_end]
+            # Extract the body (if present)
+            body = '\r\n'.join(request_lines[header_end + 1:]) 
 
-        # Extract the body (if present)
-        body = ''.join(request_lines[header_end + 1:])
+            # Reconstruct the full request
+            full_request = '\r\n'.join([request_line] + headers + [body])
+            # print("Headers...: ",headers) 
+            headers = "\r\n".join(headers) 
+            return headers,body
 
-        # # Combine the request line, headers, and body
-        http_request = '\n'.join([request_line] + headers + [body])
+        except (UnicodeDecodeError, ValueError, IndexError):
+            # Handle potential errors (decoding, missing empty line, invalid index)
+            return None
 
-        return http_request
+        except (UnicodeDecodeError, ValueError, IndexError):
+            # Handle potential errors (decoding, missing empty line, invalid index)
+            return None
 
 
-    def check_request(self,request_body, sql_detection_function):
+    def check_request(self, request_headers, request_body, content_type, sql_detection_function):
         """
-        Checks a request body line by line using a given SQL detection function.
+        Checks a request for SQL injection, considering headers and body.
 
         Args:
+            request_headers: A list of header lines (e.g., ["Host: example.com", "User-Agent: ..."]).
             request_body: The request body string.
-            sql_detection_function: A function that takes a string as input and returns True if it contains SQL injection patterns, False otherwise.
+            content_type: The Content-Type header of the request.
+            sql_detection_function: A function that takes a 2D array as input and returns True if it contains SQL injection patterns, False otherwise.
 
         Returns:
-            True if the request body contains SQL injection patterns, False otherwise.
+            True if the request contains SQL injection patterns, False otherwise.
         """
-        print("check....")
-        for line in request_body.splitlines():
-            hashing_vectorizer = HashingVectorizer(n_features=2**12)
-            print("Payload in check function",[line])
-            payload = [line]
-            payload = hashing_vectorizer.fit_transform(payload).toarray()
-            if sql_detection_function(payload):
-                print("Detected...")
-                return True
-        print('Undetected...')
+        # print("Checking for SQL Injection...")
+
+        # Initialize the HashingVectorizer
+        hashing_vectorizer = HashingVectorizer(n_features=2**12)
+
+        # List of default headers to exclude
+        default_headers = [
+            'Host', 'User-Agent', 'Accept', 'Accept-Language', 'Accept-Encoding',
+            'Connection', 'Upgrade-Insecure-Requests', 'Content-Length', 'Content-Type'
+        ]
+        # print("req",request_headers)
+        # Check headers
+        for line in request_headers:
+            try:
+                key, value = line.split(':', 1)
+                key, value = key.strip(), value.strip()
+                if key.lower() not in default_headers and key:
+                    payload = hashing_vectorizer.transform([value]).toarray()  # Vectorize and convert to numeric array
+                    if sql_detection_function(payload):
+                        print(f"SQL Injection Detected in Header: {key} with Value: {value} in line {line}")
+                        return True
+            except ValueError:
+                continue
+        # print("Content-Type in check: ",content_type,'\n-----------------------------------')
+        # print("Req Body in check: ",request_body)
+        # Check request body based on Content-Type
+
+        # Check request body based on Content-Type
+        if content_type and re.match(r"^multipart/form-data", content_type): 
+            # Extract boundary
+            boundary_match = re.search(r'boundary=(.+)', content_type)
+            if boundary_match:
+                boundary = f"--{boundary_match.group(1)}"
+                parts = request_body.split(boundary)[1:-1]  # Skip first and last boundary markers
+                for part in parts:
+                    if 'Content-Disposition:' in part:
+                        try:
+                            # Extract the payload value from Content-Disposition section
+                            _, value = part.split('\r\n\r\n', 1)
+                            value = value.strip('--').strip()  # Remove any trailing boundary markers
+                            payload = hashing_vectorizer.transform([value]).toarray()
+                            if sql_detection_function(payload):
+                                print(f"SQL Injection Detected in multipart/form-data: {value}")
+                                return True
+                        except (ValueError, IndexError):
+                            continue
+        elif content_type and content_type == "application/x-www-form-urlencoded":
+            # Decode the form data
+            try:
+                form_data = urllib.parse.parse_qs(request_body)  # Parse the key-value pairs into a dictionary
+                print(f"Decoded Form Data: {form_data}")
+
+                # Check each key-value pair
+                for key, values in form_data.items():
+                    for value in values:  # Handle cases where a key has multiple values
+                        print(f"Checking Key: {key}, Value: {value}")
+
+                        # Preprocess the value using HashingVectorizer
+                        payload = hashing_vectorizer.transform([value]).toarray()
+                        v = "WHERE 1=1 AND 1=1"
+                        p = hashing_vectorizer.transform([v]).toarray()
+                        result = sql_detection_function(p)
+                        print("Testing url-encoded :",result)
+                        # Check for SQL injection
+                        if sql_detection_function(payload):
+                            print(f"SQL Injection Detected in x-www-form-urlencoded: {key}={value}")
+                            return True
+            except Exception as e:
+                print(f"Error processing x-www-form-urlencoded data: {e}")
+        
+        elif content_type and (content_type == "text/plain" or content_type == "application/json"):
+            # Handle raw requests (text/plain, application/json, etc.)
+            if content_type == "application/json":
+                try:
+                    # Parse the JSON body into a dictionary
+                    json_data = json.loads(request_body)
+                    print(f"Parsed JSON Data: {json_data}")
+
+                    # Iterate over key-value pairs in the JSON
+                    for key, value in json_data.items():
+                        if isinstance(value, str):  # Only process string values
+                            print(f"Checking Key: {key}, Value: {value}")
+
+                            # Preprocess the value with HashingVectorizer
+                            payload = hashing_vectorizer.transform([value]).toarray()
+                            print(f"Preprocessed Payload for Key '{key}': {payload}")
+
+                            # Check for SQL injection
+                            if sql_detection_function(payload):
+                                print(f"SQL Injection Detected in JSON: {key}={value}")
+                                return True
+                        else:
+                            print(f"Skipping non-string value for Key: {key}")
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing JSON body: {e}")
+            else:
+                payload = hashing_vectorizer.transform([request_body]).toarray()  # Vectorize and convert to numeric array
+                v = "1' and 1 =  ( select count ( * )  from tablenames ) ; --"
+                p = hashing_vectorizer.transform([v]).toarray()
+                result = sql_detection_function(p)
+                print("Testing text :",result)
+
+                if sql_detection_function(payload):
+                    print("SQL Injection Detected in Raw Body!")
+                    return True
+
+        print("No SQL Injection Detected.")
         return False
 
+
+
+    def extract_content_type(self,request_data):
+        """
+        Extracts the Content-Type header value from the given HTTP request data.
+
+        Args:
+            request_data: The raw HTTP request data as a string.
+
+        Returns:
+            The value of the Content-Type header, or None if not found.
+        """
+
+        lines = request_data.split('\r\n')
+        for line in lines:
+            if line.lower().startswith('content-type:'):
+                return line.split(':')[1].strip()
+        return None
+    
     def handle_client(self, client_socket):
         print('Request comes in...')
+        print("Healthy Servers in handle",len(self.healthy_servers))
         try:
             # Receive request data from the client
             request_data = client_socket.recv(1024).decode()
             client_ip = client_socket.getpeername()[0]
             print("client_ip ",client_ip)
             
-            if(self.rate_limiter.is_rate_limited(client_ip)):
-                print('Not Permitted...')
+            if(self.ip_blocker.is_blocked(client_ip)):
+                print('Not Permitted... | Blocked! ')
                 error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
                 client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"Request from {client_ip} forbidden. ( Rate limited! )")
+                self.status_update_callback(f"Request from {client_ip} forbidden. ( Blocked )",danger_alert=True)
+                return
+
+            if(self.rate_limiter.is_rate_limited(client_ip)):
+                print('Not Permitted... | rate limited')
+                error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
+                client_socket.sendall(error_message.encode())
+                self.status_update_callback(f"Request from {client_ip} forbidden. ( Rate limited! )",danger_alert=True)
+                self.ip_blocker.block_ip(client_ip)
                 return
            
-            # print("Request Data",request_data)
-            # payload = self.extract_http_request(request_data)
-            # print("Payload",payload)
-            if(self.check_request(request_data,self.sql_detecter.predict)):
-                self.status_update_callback(f"SQL Injection Detected from IP : {client_ip}")
-                print('Not Permitted...')
+            print("Request Data",request_data)
+            headers,body = self.extract_http_request(request_data.encode('utf-8'))
+            content_type = self.extract_content_type(request_data)
+            
+            if(self.check_request(headers,body,content_type,self.sql_detecter.predict)):
+                self.status_update_callback(f"SQL Injection Detected from IP : {client_ip}",danger_alert=True)
+                print('Not Permitted... | SQLi detected')
                 error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
                 client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"Request from {client_ip} forbidden. ( SQL Injection Detected! )")
+                self.status_update_callback(f"Request from {client_ip} forbidden. ( SQL Injection Detected! )",danger_alert=True)
+                self.ip_blocker.block_ip(client_ip)
                 return
             
             # Check if there are healthy servers available
             if len(self.healthy_servers) <= 0:
                 error_message = "HTTP/1.1 500 Service Unavailable\r\n\r\nNo Upstream Server Available"
                 client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"No available servers to handle the request from {client_ip}.")
+                self.status_update_callback(f"No available servers to handle the request from {client_ip}.",danger_alert=True)
                 return
 
             # Select backend server based on the chosen algorithm
@@ -263,9 +433,9 @@ class LoadBalancer:
                 client_socket.sendall(response_data)
                 self.status_update_callback(f"Successfully forwarded request to {backend_addr} and sent response back to client IP {client_ip}.")
             except Exception as e:
-                self.status_update_callback(f"Error communicating with backend server {backend_addr}: {str(e)}")
+                self.status_update_callback(f"Error communicating with backend server {backend_addr}: {str(e)}",danger_alert=True)
         except Exception as e:
-            self.status_update_callback(f"Error handling client {client_ip}: {str(e)}")
+            self.status_update_callback(f"Error handling client {client_ip}: {str(e)}",danger_alert=True)
         finally:
             client_socket.close()
 
@@ -280,20 +450,37 @@ class LoadBalancer:
 
 
     def start_load_balancer(self):
-        self.health_check_thread = threading.Thread(target=self.health_check, daemon=True).start()
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        print("Starting load balancer...")
+        self.running = True
+        self.health_check_thread = threading.Thread(target=self.health_check, daemon=True)
+        self.health_check_thread.start()
+        time.sleep(1)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.server_socket:
+            # Allow socket address reuse
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            
             machine_ip = get_current_ip_address()
-            print(machine_ip)
-            if(not machine_ip):
+            if not machine_ip:
                 machine_ip = '127.0.0.1'
             machine_ip = '127.0.0.1'
-            server_socket.bind((machine_ip, self.port))
-            server_socket.listen()
+            
+            self.server_socket.bind((machine_ip, self.port))
+            self.server_socket.listen()
+           
             self.status_update_callback(f"Load balancer is running at ip {machine_ip} port: {self.port} using {self.algorithm}...")
-
+            print(self.running,'Running')
             while self.running:
-                client_socket, _ = server_socket.accept()
-                self.handle_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
+                print("Before running socket")
+                try:
+                    client_socket, _ = self.server_socket.accept()
+                    self.handle_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True)
+                    self.handle_thread.start()
+                    print("After running socket")
+                except OSError as e:
+                    self.stop()
+                    self.status_update_callback(f"Socket error: {e}")
+                    break
+
     # def start_load_balancer(self):
     #     # Signal handler for graceful shutdown
     #     def signal_handler(sig, frame):

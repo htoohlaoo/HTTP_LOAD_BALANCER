@@ -10,7 +10,8 @@ import os
 import sys
 from tkinter import font
 from utils import clear_port
-
+from utils import get_current_ip_address
+from test_socket import test_port_binding
 class LoadBalancerUI(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -232,8 +233,15 @@ class LoadBalancerUI(tk.Tk):
     
     def start_load_balancer(self):
         if(not self.is_load_balancer_running()):
+            machine_ip = get_current_ip_address()
+            if not machine_ip:
+                machine_ip = '127.0.0.1'
+            print('test port binding',test_port_binding(machine_ip,self.lb_port))
+            if(not test_port_binding(machine_ip,self.lb_port)):
+               self.show_error_popup("Error","Port isn't available (Change to a new port)")
+               return
             print('New Thread Starts...')
-            clear_port(self.lb_port)# clear the port's process
+            # clear_port(self.lb_port)# clear the port's process
             backend_servers = []
             for server_entry in self.server_listbox.get(0, tk.END):
                 server_name, server_ip_port = server_entry.split(' (')
@@ -242,6 +250,7 @@ class LoadBalancerUI(tk.Tk):
             selected_algorithm = self.algorithm_combobox.current()
             if selected_algorithm not in self.algorithm_list:
                 selected_algorithm = 'round_robin'
+            print("Started...")
             self.load_balancer = LoadBalancer(port=self.lb_port, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm,health_check_circle=self.health_check_circle,rate_limit_config={"limit":self.limit,"period":self.period})
             self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=True)
             self.load_balancer_thread.start()
@@ -255,19 +264,25 @@ class LoadBalancerUI(tk.Tk):
 
     def stop_load_balancer(self):
         print("stop loadbalancer")
-        if isinstance(self.load_balancer,LoadBalancer) and isinstance(self.load_balancer_thread,threading.Thread):
-            self.load_balancer.stop()
-            self.load_balancer_thread.join(5)  # Timeout to prevent indefinite blocking
-            self.load_balancer_thread = None  # Reset thread reference after joining
-            self.load_balancer = None #reset load_balancer reference
-            self.start_button.config(state=tk.NORMAL)
-            self.stop_button.config(state=tk.DISABLED)
-            self.status_label.config(text="Status: Stopped")
-            self.log_message("Load Balancer Stopped")
-            self.add_server_button.config(state=tk.NORMAL)
-            self.remove_server_button.config(state=tk.NORMAL)
-            self.config_button.config(state=tk.NORMAL)
+        try:
+            if isinstance(self.load_balancer,LoadBalancer) and isinstance(self.load_balancer_thread,threading.Thread):
+                self.load_balancer.stop()
+                self.load_balancer_thread.join(5)  # Timeout to prevent indefinite blocking
+                self.load_balancer_thread = None  # Reset thread reference after joining
+                self.load_balancer = None #reset load_balancer reference
+                self.update_topology()
+                self.start_button.config(state=tk.NORMAL)
+                self.stop_button.config(state=tk.DISABLED)
+                self.status_label.config(text="Status: Stopped")
+                self.add_server_button.config(state=tk.NORMAL)
+                self.remove_server_button.config(state=tk.NORMAL)
+                self.config_button.config(state=tk.NORMAL)
+        except Exception as e:
+            self.show_error_popup("Error","Error in stopping load balancer")
+            return
+
         self.update_topology()
+        self.show_error_popup("Info","Load Balancer Stopped")
     def update_topology(self):
         # Get canvas size
         canvas_width = self.canvas.winfo_width()
@@ -418,14 +433,35 @@ class LoadBalancerUI(tk.Tk):
             self.show_error_popup("Invalid JSON", "The provided JSON is invalid. Please correct it and try again.")
     
     def show_error_popup(self, title, message):
+        # Create a new top-level window
         error_popup = tk.Toplevel(self)
         error_popup.title(title)
+        
+        # Disable interaction with the main window
+        error_popup.grab_set()
+        
+        # Make sure the popup is always on top
+        error_popup.transient(self)
 
-        error_label = tk.Label(error_popup, text=message, fg='red')
-        error_label.pack(padx=10, pady=10)
+        # Add the error message
+        error_label = tk.Label(error_popup, text=message, fg='red', font=("Arial", 12, "bold"))
+        error_label.pack(padx=20, pady=20)
 
-        close_button = tk.Button(error_popup, text="Close", command=error_popup.destroy)
+        # Add a close button
+        close_button = tk.Button(
+            error_popup,
+            text="OK",
+            command=error_popup.destroy,
+            font=("Arial", 10)
+        )
         close_button.pack(pady=10)
+
+        # Center the popup window on the screen
+        error_popup.update_idletasks()
+        x = (self.winfo_screenwidth() - error_popup.winfo_width()) // 2
+        y = (self.winfo_screenheight() - error_popup.winfo_height()) // 2
+        error_popup.geometry(f"+{x}+{y}")
+
 
     def load_config_from_json(self):
         # Path to your JSON file
@@ -466,8 +502,9 @@ class LoadBalancerUI(tk.Tk):
 
             self.log_message(f"Configuration saved to {config_path}")
 
-    def log_message(self, message):
-        self.logger.log_message(message=message)
+    def log_message(self, message,danger_alert=False):
+        # print('Danger alert',danger_alert)
+        self.logger.log_message(message=message,danger_alert=danger_alert)
         self.log_text.see(tk.END)
 
 if __name__ == "__main__":
