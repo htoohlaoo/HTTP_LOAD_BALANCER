@@ -22,3 +22,7 @@ class RateLimiter:
             self.redis.expire(hashed_key, self.period)
 
         return current_count > self.rate_limit
+    
+    def clear_rate_limiter(self):
+        self.redis.flushdb()
+

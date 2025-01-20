@@ -1,29 +1,26 @@
+import json
 import argparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
+
 class RequestCounterHandler(BaseHTTPRequestHandler):
-    request_count = 0  # Class variable to keep track of the number of requests
+    request_count = 0
 
     def do_GET(self):
-        # Check if the path is '/' to count only requests to the main page
-        if self.path == '/':
-            # Increment the request count
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            response_content = { "status": "healthy" }
+            json_response = json.dumps(response_content)
+            self.wfile.write(json_response.encode('utf-8'))
+        else:
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
             RequestCounterHandler.request_count += 1
-            print("Counter:", RequestCounterHandler.request_count)
-            
-        # Send response status code
-        self.send_response(200)
-
-        # Send headers
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-
-        # Prepare JSON response content
-        response_content = { "count": RequestCounterHandler.request_count }
-        json_response = json.dumps(response_content)
-
-        # Send the JSON response
-        self.wfile.write(json_response.encode('utf-8'))
+            response_content = { "count": RequestCounterHandler.request_count }
+            json_response = json.dumps(response_content)
+            self.wfile.write(json_response.encode('utf-8'))
 
 def run(server_class=HTTPServer, handler_class=RequestCounterHandler, ip='127.0.0.1', port=8080):
     server_address = (ip, port)

@@ -37,3 +37,7 @@ class IPBlocker:
         """
         ip_hash = hashlib.sha256(ip.encode()).hexdigest()
         return self.redis.exists(ip_hash)
+    
+    def clear_block(self):
+        """ Clear all blocked IPs from Redis"""
+        self.redis.flushdb()

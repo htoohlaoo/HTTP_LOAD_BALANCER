@@ -25,7 +25,8 @@ class LoadBalancerUI(tk.Tk):
         self.logfile_directory = os.getcwd()
         self.configfile_directory = os.getcwd()
         self.health_check_circle = 5 #set default to 5 
-        self.maximum_servers = 5 
+        self.maximum_servers = 5
+        self.health_check_url = "/health" 
         self.load_config_from_json()
 
         #rate_limiter_configurations
@@ -251,7 +252,15 @@ class LoadBalancerUI(tk.Tk):
             if selected_algorithm not in self.algorithm_list:
                 selected_algorithm = 'round_robin'
             print("Started...")
-            self.load_balancer = LoadBalancer(port=self.lb_port, backend_servers=backend_servers, status_update_callback=self.log_message,update_topology_callback=self.update_topology,algorithm=selected_algorithm,health_check_circle=self.health_check_circle,rate_limit_config={"limit":self.limit,"period":self.period})
+            self.load_balancer = LoadBalancer(
+                port=self.lb_port, 
+                backend_servers=backend_servers, 
+                status_update_callback=self.log_message,
+                update_topology_callback=self.update_topology,
+                algorithm=selected_algorithm,
+                health_check_config={"circle":self.health_check_circle,"url":self.health_check_url},
+                rate_limit_config={"limit":self.limit,"period":self.period}
+                )
             self.load_balancer_thread = threading.Thread(target=self.load_balancer.start_load_balancer, daemon=True)
             self.load_balancer_thread.start()
             self.status_label.config(text="Status: Running")
@@ -293,10 +302,10 @@ class LoadBalancerUI(tk.Tk):
         center_y = canvas_height / 2
 
         # Load Balancer dimensions and positioning
-        lb_width, lb_height = 120, 50
+        lb_width, lb_height = 150, 50
         lb_x, lb_y = center_x, center_y - canvas_height / 3  # Top center position for load balancer
         lb_tag = "load_balancer"
-
+        
         # Clear the canvas before drawing (useful for dynamic updates)
         self.canvas.delete("all")
 
@@ -398,6 +407,7 @@ class LoadBalancerUI(tk.Tk):
             "configfile_directory":self.configfile_directory,
             "maximum_servers": self.maximum_servers,
             "health_check_circle": self.health_check_circle,
+            "health_check_url":self.health_check_url,
             "lb_port":self.lb_port,
             "rate_limit":self.limit,
             "rate_period":self.period,
@@ -423,6 +433,7 @@ class LoadBalancerUI(tk.Tk):
             self.configfile_directory = config.get('configfile_directory')
             self.maximum_servers = config.get('maximum_servers')
             self.health_check_circle = config.get('health_check_circle')
+            self.health_check_url = config.get('health_check_url')
             self.lb_port = config.get('lb_port')
             self.limit = config.get('rate_limit')   
             self.period = config.get('rate_period')
@@ -430,7 +441,7 @@ class LoadBalancerUI(tk.Tk):
             self.popup.destroy()
             self.config_button.config(state=tk.NORMAL)
         except json.JSONDecodeError:
-            self.show_error_popup("Invalid JSON", "The provided JSON is invalid. Please correct it and try again.")
+            self.show_error_popup("Invalid JSON Format", "The provided JSON is invalid. Please correct it and try again.")
     
     def show_error_popup(self, title, message):
         # Create a new top-level window
@@ -477,6 +488,7 @@ class LoadBalancerUI(tk.Tk):
         self.configfile_directory = config_data.get('configfile_directory')
         self.maximum_servers = config_data.get('maximum_servers')
         self.health_check_circle = config_data.get('health_check_circle')
+        self.health_check_url = config_data.get('health_check_url')
         self.lb_port = config_data.get('lb_port')
         self.limit = config_data.get('rate_limit')
         self.period = config_data.get('rate_period')
@@ -487,6 +499,7 @@ class LoadBalancerUI(tk.Tk):
                 "logfile_directory": self.logfile_directory,
                 "configfile_directory": self.configfile_directory,
                 "health_check_circle": self.health_check_circle,
+                "health_check_url": self.health_check_url,
                 "maximum_servers": self.maximum_servers,
                 "lb_port":self.lb_port,
                 "rate_limit":self.limit,
@@ -503,9 +516,13 @@ class LoadBalancerUI(tk.Tk):
             self.log_message(f"Configuration saved to {config_path}")
 
     def log_message(self, message,danger_alert=False):
+        """Logs messaage to logger UI"""
         # print('Danger alert',danger_alert)
         self.logger.log_message(message=message,danger_alert=danger_alert)
         self.log_text.see(tk.END)
+
+    
+        
 
 if __name__ == "__main__":
     app = LoadBalancerUI()

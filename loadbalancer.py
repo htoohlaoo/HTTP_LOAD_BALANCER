@@ -18,7 +18,7 @@ from ip_blocker import IPBlocker
 from test_socket import test_port_binding
 
 class LoadBalancer:
-    def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_circle=4,rate_limit_config ={'limit' : 60,'period':30} ):
+    def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_config={"circle":3,"url":"/health"},rate_limit_config ={'limit' : 60,'period':30} ):
         self.port = port
         self.backend_servers = backend_servers
         self.healthy_servers = []
@@ -30,7 +30,8 @@ class LoadBalancer:
         self.current_index = 0  # For round robin
         self.connection_count = {server: 0 for server in backend_servers}  # For least connections
         self.server_status = {server: {'health': 'Unknown', 'requests': 0} for server in backend_servers}
-        self.health_check_circle = health_check_circle
+        self.health_check_circle = health_check_config['circle']
+        self.health_check_url = health_check_config['url']
         self.health_check_thread = None
         self.handle_thread = None
         #rate limiter configurations
@@ -58,34 +59,46 @@ class LoadBalancer:
     def stop(self):
         try:
             self.running = False
-            if hasattr(self, 'server_socket'):
-                self.server_socket.close()
+            if hasattr(self, 'server_socket') and self.server_socket:
+                try:
+                    self.server_socket.shutdown(socket.SHUT_RDWR)
+                except OSError as e:
+                    print(f"Error shutting down socket: {e}")
+                try:
+                    self.server_socket.close()
+                    print("Socket closed in load balancer")
+                except OSError as e:
+                    print(f"Error closing socket: {e}")
             if self.health_check_thread:
                 print("Stopping Health Check...")
                 self.health_check_thread.join(3)
             if self.handle_thread:
                 self.handle_thread.join(3)
+            
+            try:
+                self.clear_history()
+                self.status_update_callback("Resetted all redis history")
+            except Exception as e:
+                self.status_update_callback("Error in resetting all redis history",True)
 
             if self.handle_thread:print("Is alive",self.handle_thread.is_alive())
             self.health_check_thread = None
             self.handle_thread = None
-            self.healthy_servers.clear()
             self.server_status = {server: {'health': 'Unknown', 'requests': 0} for server in self.backend_servers}
-            self.connection_count.clear()
             self.status_update_callback("Load balancer stopped successfully.")
-            time.sleep(3)
+           
         except Exception as e:
-            self.status_update_callback(f"Error stopping threads: {e}")
+            self.status_update_callback(f"Error stopping threads: {e}",True)
 
     def health_check(self):
         while self.running:
             with self.lock:
                 # print("Backend servers",self.backend_servers)
-                print("Backend servers",self.healthy_servers)
+                print("Healthy servers",self.healthy_servers)
                 # print('Running in health check',self.running)
                 for server in self.backend_servers:
                     try:
-                        response = requests.get(f'http://{server[0]}:{server[1]}')
+                        response = requests.get(f'http://{server[0]}:{server[1]}{self.health_check_url}')
                         if response.status_code == 200:
                             if server not in self.healthy_servers:
                                 self.healthy_servers.append(server)
@@ -99,7 +112,7 @@ class LoadBalancer:
                         if server in self.healthy_servers:
                             self.healthy_servers.remove(server)
                         self.server_status[server]['health'] = 'Unhealthy'
-                        self.status_update_callback(f"Error checking server {server}: Connection Refused")
+                        self.status_update_callback(f"Error checking server {server}: Connection Refused",True)
             self.update_topology_callback()
             time.sleep(self.health_check_circle)  # Health check interval
 
@@ -126,56 +139,6 @@ class LoadBalancer:
     def get_server_status(self):
         # Return the current status of each server
         return self.server_status
-
-    # def handle_client(self, client_socket):
-    #     request_data = client_socket.recv(1024).decode()
-    #     client_ip = client_socket.getpeername()[0]
-
-    #     if len(self.healthy_servers) <= 0:
-    #         error_message = "HTTP/1.1 500 Service Unavailable\r\n\r\nNo Upstream Server Available"
-    #         client_socket.sendall(error_message.encode())
-    #         client_socket.close()
-    #         self.status_update_callback(f"No available servers to handle the request from {client_ip}.")
-    #         return
-
-    #     # Select backend server based on the chosen algorithm
-    #     if self.algorithm == 'round_robin':
-    #         backend_addr = self.get_server_round_robin()
-    #         self.status_update_callback(f"Selected backend server {backend_addr} using round-robin.")
-    #     elif self.algorithm == 'least_connection':
-    #         backend_addr = self.get_server_least_connections()
-    #         self.connection_count[backend_addr] += 1  # Increment connection count for chosen server
-    #         self.status_update_callback(f"Selected backend server {backend_addr} using least connections. Connection count updated.")
-    #     elif self.algorithm == 'ip_hash':
-    #         backend_addr = self.get_server_ip_hash(client_ip)
-    #         self.status_update_callback(f"Selected backend server {backend_addr} using IP hash for client IP {client_ip}.")
-    #     else:
-    #         backend_addr = random.choice(self.healthy_servers)  # Default to random if unknown algorithm
-    #         self.status_update_callback(f"Selected backend server {backend_addr} randomly due to unknown algorithm.")
-    #     backend_socket = None
-    #     try:
-    #         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as backend_socket:
-    #             backend_socket.connect(backend_addr)
-    #             backend_socket.sendall(request_data.encode())
-    #             response_data = backend_socket.recv(1024)
-    #             print(response_data)
-    #         client_socket.sendall(response_data)
-    #         self.status_update_callback(f"Successfully forwarded request to {backend_addr} and sent response back to client IP {client_ip}.")
-    #     except Exception as e:
-    #         self.status_update_callback(f"Error communicating with backend server {backend_addr}")
-    #     finally:
-    #         client_socket.close()
-    #         if(backend_socket): backend_socket.close()
-    #         if self.algorithm == 'least_connection':
-    #             self.connection_count[backend_addr] -= 1  # Decrement connection count after response
-    #             #self.status_update_callback(f"Decremented connection count for server {backend_addr}.")
-
-    #         if backend_addr in self.server_status:
-    #             self.server_status[backend_addr]['requests'] += 1  # Increment request count for chosen server
-    #             #self.status_update_callback(f"Incremented request count for server {backend_addr}. Total requests: {self.server_status[backend_addr]['requests']}.")
-
-
-
 
     def extract_http_request(self, data):
         """Extracts the HTTP request from raw socket data.
@@ -247,7 +210,7 @@ class LoadBalancer:
                 if key.lower() not in default_headers and key:
                     payload = hashing_vectorizer.transform([value]).toarray()  # Vectorize and convert to numeric array
                     if sql_detection_function(payload):
-                        print(f"SQL Injection Detected in Header: {key} with Value: {value} in line {line}")
+                        print(f"SQL Injection Detected in Header: {key} with Value: {value} in line {line}",True)
                         return True
             except ValueError:
                 continue
@@ -270,7 +233,7 @@ class LoadBalancer:
                             value = value.strip('--').strip()  # Remove any trailing boundary markers
                             payload = hashing_vectorizer.transform([value]).toarray()
                             if sql_detection_function(payload):
-                                print(f"SQL Injection Detected in multipart/form-data: {value}")
+                                print(f"SQL Injection Detected in multipart/form-data: {value}",True)
                                 return True
                         except (ValueError, IndexError):
                             continue
@@ -463,57 +426,30 @@ class LoadBalancer:
             if not machine_ip:
                 machine_ip = '127.0.0.1'
             machine_ip = '127.0.0.1'
+            try:
+                self.server_socket.bind((machine_ip, self.port))
+                self.server_socket.listen()
             
-            self.server_socket.bind((machine_ip, self.port))
-            self.server_socket.listen()
-           
-            self.status_update_callback(f"Load balancer is running at ip {machine_ip} port: {self.port} using {self.algorithm}...")
-            print(self.running,'Running')
-            while self.running:
-                print("Before running socket")
-                try:
-                    client_socket, _ = self.server_socket.accept()
-                    self.handle_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True)
-                    self.handle_thread.start()
-                    print("After running socket")
-                except OSError as e:
-                    self.stop()
-                    self.status_update_callback(f"Socket error: {e}")
-                    break
-
-    # def start_load_balancer(self):
-    #     # Signal handler for graceful shutdown
-    #     def signal_handler(sig, frame):
-    #         print("Shutting down gracefully...")
-    #         self.running = False
-    #         self.server_socket.close()  # Properly close the server socket
-    #         sys.exit(0)
-
-    #     # Register the signal handler for SIGINT (Ctrl-C)
-    #     signal.signal(signal.SIGINT, signal_handler)
-
-    #     # Start health check thread
-    #     threading.Thread(target=self.health_check, daemon=True).start()
-
-    #     # Create server socket
-    #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-    #         self.server_socket = server_socket
-
-    #         # Set socket options to reuse the address
-    #         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    #         # Bind and listen
-    #         server_socket.bind(('localhost', self.port))
-    #         server_socket.listen()
-
-    #         self.status_update_callback(f"Load balancer is running at port: {self.port} using {self.algorithm}...")
-
-    #         # Accept connections in a loop
-    #         while self.running:
-    #             try:
-    #                 client_socket, _ = server_socket.accept()
-    #                 threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
-    #             except OSError:
-    #                 break  # Socket has been closed, exit loop
-
-    #     print("Load balancer stopped.")
+                self.status_update_callback(f"Load balancer is running at ip {machine_ip} port: {self.port} using {self.algorithm}...")
+                print(self.running,'Running')
+                while self.running:
+                    print("Before running socket")
+                    try:
+                        client_socket, _ = self.server_socket.accept()
+                        self.handle_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True)
+                        self.handle_thread.start()
+                        print("After running socket")
+                    except OSError as e:
+                        if not self.running:
+                            # This error is expected when stopping the load balancer
+                            print("Load balancer stopped, exiting accept loop.")
+                        else:
+                            self.status_update_callback(f"Socket error in handling: {e}",True)
+                        break
+            except OSError as e:    
+                        self.stop()
+                        self.status_update_callback(f"Socket error: {e}",True)
+    def clear_history(self):
+        self.rate_limiter.clear_rate_limiter()
+        self.ip_blocker.clear_block()
+    
