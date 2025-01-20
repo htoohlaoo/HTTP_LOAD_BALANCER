@@ -1,4 +1,4 @@
 *.txt
 *.json
-
+/lb_env
 __pycache__
