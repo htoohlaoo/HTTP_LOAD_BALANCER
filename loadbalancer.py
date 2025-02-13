@@ -16,6 +16,7 @@ import json
 from sklearn.feature_extraction.text import HashingVectorizer
 from ip_blocker import IPBlocker
 from test_socket import test_port_binding
+import urllib.parse
 
 class LoadBalancer:
     def __init__(self, port, backend_servers, status_update_callback,update_topology_callback, algorithm='round_robin',health_check_config={"circle":3,"url":"/health"},rate_limit_config ={'limit' : 60,'period':30} ):
@@ -140,6 +141,53 @@ class LoadBalancer:
         # Return the current status of each server
         return self.server_status
 
+
+    
+    def get_request_line(self,http_request):
+        """
+        Extracts the request line from a raw HTTP request string.
+
+        Args:
+            http_request (str): The full raw HTTP request.
+
+        Returns:
+            str: The request line (e.g., "GET /index.html HTTP/1.1") or None if invalid.
+        """
+        lines = http_request.split("\r\n")  # HTTP headers are separated by CRLF ("\r\n")
+        return lines[0] if lines else None  # First line is the request line
+
+
+    def extract_url_params(self,request_line):
+        """
+        Extracts URL query parameters from an HTTP request line.
+
+        Args:
+            request_line (str): The first line of an HTTP request (e.g., "GET /path?param1=value1&param2=value2 HTTP/1.1").
+
+        Returns:
+            dict: A dictionary of extracted query parameters.
+        """
+        try:
+            # Split the request line to get the URL part
+            parts = request_line.split(" ")
+            if len(parts) < 2:
+                return {}
+
+            url = parts[1]  # Extract the path and query string (e.g., /path?param=value)
+            parsed_url = urllib.parse.urlparse(url)  # Parse the URL
+            query_params = urllib.parse.parse_qs(parsed_url.query)  # Extract query parameters
+            
+            # Convert lists to single values where applicable
+            return {key: values[0] if len(values) == 1 else values for key, values in query_params.items()}
+        
+        except Exception as e:
+            print(f"Error extracting URL parameters: {e}")
+            return {}
+
+    
+    # Output: {'q': 'python', 'lang': 'en', 'page': '2'}
+
+
     def extract_http_request(self, data):
         """Extracts the HTTP request from raw socket data.
 
@@ -178,7 +226,8 @@ class LoadBalancer:
             return None
 
 
-    def check_request(self, request_headers, request_body, content_type, sql_detection_function):
+    def check_request(self,sections, sql_detection_function):
+        
         """
         Checks a request for SQL injection, considering headers and body.
 
@@ -192,22 +241,47 @@ class LoadBalancer:
             True if the request contains SQL injection patterns, False otherwise.
         """
         # print("Checking for SQL Injection...")
+        request_params = sections["request_params"]
+        request_headers = sections["request_headers"]
+        request_body = sections["request_body"]
+        content_type = sections["content_type"]
 
         # Initialize the HashingVectorizer
         hashing_vectorizer = HashingVectorizer(n_features=2**12)
+        if(request_params):
+            print("Request Params in Check...")
+            for item in request_params.values():
+                print(item)
+                payload = hashing_vectorizer.transform([item]).toarray()  # Vectorize and convert to numeric array
+                if sql_detection_function(payload):
+                    print(f"SQL Injection Detected in Request Parms: In Param : {item}",True)
+                    return True
+
+
+        #CHecking request params
+
 
         # List of default headers to exclude
         default_headers = [
             'Host', 'User-Agent', 'Accept', 'Accept-Language', 'Accept-Encoding',
-            'Connection', 'Upgrade-Insecure-Requests', 'Content-Length', 'Content-Type'
+            'Connection', 'Upgrade-Insecure-Requests', 'Content-Length', 'Content-Type','Cookie','Upgrade-Insecure-Requests','Sec-Fetch-Dest',
+            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority'
         ]
-        # print("req",request_headers)
-        # Check headers
+
+        if isinstance(request_headers, str):
+            request_headers = request_headers.splitlines()  # Convert string to list of lines
+            print("Parsed Headers:", request_headers)
         for line in request_headers:
             try:
+                print("Line:", line)  # Debugging Output
+                if ':' not in line:  # Skip lines that don't contain ':'
+                    continue
+                
                 key, value = line.split(':', 1)
-                key, value = key.strip(), value.strip()
-                if key.lower() not in default_headers and key:
+                key, value = key.strip(), value.strip()  # Ensure clean key-value pairs
+                
+                if key and key not in default_headers:
+                    
                     payload = hashing_vectorizer.transform([value]).toarray()  # Vectorize and convert to numeric array
                     if sql_detection_function(payload):
                         print(f"SQL Injection Detected in Header: {key} with Value: {value} in line {line}",True)
@@ -346,8 +420,17 @@ class LoadBalancer:
             print("Request Data",request_data)
             headers,body = self.extract_http_request(request_data.encode('utf-8'))
             content_type = self.extract_content_type(request_data)
-            
-            if(self.check_request(headers,body,content_type,self.sql_detecter.predict)):
+            request_line = self.get_request_line(request_data)
+            print("Request Line",request_line)
+            request_params = self.extract_url_params(request_line)
+            print("Request Params",request_params)
+            sections = {
+                "request_params":request_params,
+                "request_headers":headers,
+                "request_body":body,
+                "content_type":content_type,
+            }
+            if(self.check_request(sections,self.sql_detecter.predict)):
                 self.status_update_callback(f"SQL Injection Detected from IP : {client_ip}",danger_alert=True)
                 print('Not Permitted... | SQLi detected')
                 error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
