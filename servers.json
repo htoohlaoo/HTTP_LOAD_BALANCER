@@ -1,12 +1,12 @@
 [
     {
-        "name": "One",
+        "name": "First Server",
         "ip": "127.0.0.1",
         "port": 8080
     },
     {
-        "name": "Two",
-        "ip": "localhost",
-        "port": 9876
+        "name": "Second Server",
+        "ip": "127.0.0.1",
+        "port": 8090
     }
 ]

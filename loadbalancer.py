@@ -42,7 +42,9 @@ class LoadBalancer:
         print("Limit: ",self.limit,"    / Period :",self.period)
         self.rate_limiter = RateLimiter(rate_limit=self.limit,period=self.period)
 
+        # self.sql_detecter = joblib.load('sql_injection_model_v2.pkl')
         self.sql_detecter = joblib.load('sql_injection_model_v2.pkl')
+
         self.ip_blocker = IPBlocker(expiration_time=self.period)
         
     # def stop(self):
@@ -265,7 +267,7 @@ class LoadBalancer:
         default_headers = [
             'Host', 'User-Agent', 'Accept', 'Accept-Language', 'Accept-Encoding',
             'Connection', 'Upgrade-Insecure-Requests', 'Content-Length', 'Content-Type','Cookie','Upgrade-Insecure-Requests','Sec-Fetch-Dest',
-            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority'
+            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority','Postman-Token'
         ]
 
         if isinstance(request_headers, str):
