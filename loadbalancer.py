@@ -213,7 +213,7 @@ class LoadBalancer:
 
             # Reconstruct the full request
             full_request = '\r\n'.join([request_line] + headers + [body])
-            # print("Headers...: ",headers) 
+            print("Headers...: ",headers) 
             headers = "\r\n".join(headers) 
             return headers,body
 
@@ -265,7 +265,8 @@ class LoadBalancer:
         default_headers = [
             'Host', 'User-Agent', 'Accept', 'Accept-Language', 'Accept-Encoding',
             'Connection', 'Upgrade-Insecure-Requests', 'Content-Length', 'Content-Type','Cookie','Upgrade-Insecure-Requests','Sec-Fetch-Dest',
-            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority'
+            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority','sec-ch-ua','sec-ch-ua-mobile','sec-ch-ua-platform','DNT','TE',
+            'If-Modified-Since', 'If-None-Match', 'Cache-Control', 'Pragma', 'Referer', 'Origin'
         ]
 
         if isinstance(request_headers, str):
@@ -447,7 +448,17 @@ class LoadBalancer:
                 "request_body": body,
                 "content_type": content_type,
             }
-
+            #ignore favicon request that is default as extra request in browsers
+            if request_line and "GET /favicon.ico" in request_line:
+                favicon = (
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: image/x-icon\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                )
+                client_socket.sendall(favicon.encode())
+                return
             # SQL injection check
             print(f"Checking request from {client_ip} for SQLi...")
             if self.check_request(sections, self.sql_detecter.predict):
