@@ -2,3 +2,6 @@
 *.json
 /lb_env
 __pycache__
+load_balancer_logs.txt
+servers.json
+config.json
