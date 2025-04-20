@@ -215,7 +215,7 @@ class LoadBalancer:
 
             # Reconstruct the full request
             full_request = '\r\n'.join([request_line] + headers + [body])
-            # print("Headers...: ",headers) 
+            print("Headers...: ",headers) 
             headers = "\r\n".join(headers) 
             return headers,body
 
@@ -251,9 +251,9 @@ class LoadBalancer:
         # Initialize the HashingVectorizer
         hashing_vectorizer = HashingVectorizer(n_features=2**12)
         if(request_params):
-            print("Request Params in Check...")
+            #print("Request Params in Check...")
             for item in request_params.values():
-                print(item)
+                #print(item)
                 payload = hashing_vectorizer.transform([item]).toarray()  # Vectorize and convert to numeric array
                 if sql_detection_function(payload):
                     print(f"SQL Injection Detected in Request Parms: In Param : {item}",True)
@@ -267,15 +267,16 @@ class LoadBalancer:
         default_headers = [
             'Host', 'User-Agent', 'Accept', 'Accept-Language', 'Accept-Encoding',
             'Connection', 'Upgrade-Insecure-Requests', 'Content-Length', 'Content-Type','Cookie','Upgrade-Insecure-Requests','Sec-Fetch-Dest',
-            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority','Postman-Token'
+            'Sec-Fetch-Mode','Sec-Fetch-Site','Sec-Fetch-User','Priority','sec-ch-ua','sec-ch-ua-mobile','sec-ch-ua-platform','DNT','TE',
+            'If-Modified-Since', 'If-None-Match', 'Cache-Control', 'Pragma', 'Referer', 'Origin'
         ]
 
         if isinstance(request_headers, str):
             request_headers = request_headers.splitlines()  # Convert string to list of lines
-            print("Parsed Headers:", request_headers)
+            #print("Parsed Headers:", request_headers)
         for line in request_headers:
             try:
-                print("Line:", line)  # Debugging Output
+                #print("Line:", line)  # Debugging Output
                 if ':' not in line:  # Skip lines that don't contain ':'
                     continue
                 
@@ -317,7 +318,7 @@ class LoadBalancer:
             # Decode the form data
             try:
                 form_data = urllib.parse.parse_qs(request_body)  # Parse the key-value pairs into a dictionary
-                print(f"Decoded Form Data: {form_data}")
+                #print(f"Decoded Form Data: {form_data}")
 
                 # Check each key-value pair
                 for key, values in form_data.items():
@@ -348,11 +349,11 @@ class LoadBalancer:
                     # Iterate over key-value pairs in the JSON
                     for key, value in json_data.items():
                         if isinstance(value, str):  # Only process string values
-                            print(f"Checking Key: {key}, Value: {value}")
+                            #print(f"Checking Key: {key}, Value: {value}")
 
                             # Preprocess the value with HashingVectorizer
                             payload = hashing_vectorizer.transform([value]).toarray()
-                            print(f"Preprocessed Payload for Key '{key}': {payload}")
+                            #print(f"Preprocessed Payload for Key '{key}': {payload}")
 
                             # Check for SQL injection
                             if sql_detection_function(payload):
@@ -397,106 +398,156 @@ class LoadBalancer:
     
     def handle_client(self, client_socket):
         print('Request comes in...')
-        print("Healthy Servers in handle",len(self.healthy_servers))
+        print("Healthy Servers in handle:", len(self.healthy_servers))
+        client_ip = "unknown"
         try:
-            # Receive request data from the client
-            request_data = client_socket.recv(1024).decode()
-            client_ip = client_socket.getpeername()[0]
-            print("client_ip ",client_ip)
-            
-            if(self.ip_blocker.is_blocked(client_ip)):
-                print('Not Permitted... | Blocked! ')
-                error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
-                client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"Request from {client_ip} forbidden. ( Blocked )",danger_alert=True)
+            # Get client IP immediately and validate
+            peer_info = client_socket.getpeername()
+            if peer_info is None:
+                raise ValueError("Client socket has no peer info (not connected).")
+            client_ip, _ = peer_info  # Unpack safely
+            print("client_ip:", client_ip)
+
+            # Receive full request data
+            request_data = b""
+            while True:
+                part = client_socket.recv(1024)
+                if not part:
+                    print("No request data received or client disconnected.")
+                    return
+                request_data += part
+                if len(part) < 1024:  # End of request if partial buffer
+                    break
+            request_str = request_data.decode('utf-8', errors='ignore')
+            print("Request Data:", request_str)
+
+            # IP blocking and rate limiting checks
+            if self.ip_blocker.is_blocked(client_ip):
+                print('Not Permitted... | Blocked!')
+                #error_message = "HTTP/1.1 403 Forbidden\r\nContent-Length: 15\r\n\r\nRequest Forbidden"
+                client_socket.sendall(self.get_err_message("Request Forbidden!"))
+                self.status_update_callback(f"Request from {client_ip} forbidden. (Blocked)", danger_alert=True)
                 return
 
-            if(self.rate_limiter.is_rate_limited(client_ip)):
-                print('Not Permitted... | rate limited')
-                error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
-                client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"Request from {client_ip} forbidden. ( Rate limited! )",danger_alert=True)
+            if self.rate_limiter.is_rate_limited(client_ip):
+                print('Not Permitted... | Rate limited')
+                #error_message = "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 15\r\n\r\nRequest Forbidden"
+                client_socket.sendall(self.get_err_message("Request Forbidden!"))
+                self.status_update_callback(f"Request from {client_ip} forbidden. (Rate limited!)", danger_alert=True)
                 self.ip_blocker.block_ip(client_ip)
                 return
-           
-            print("Request Data",request_data)
-            headers,body = self.extract_http_request(request_data.encode('utf-8'))
-            content_type = self.extract_content_type(request_data)
-            request_line = self.get_request_line(request_data)
-            print("Request Line",request_line)
+
+            # Extract request details
+            headers, body = self.extract_http_request(request_data)
+            content_type = self.extract_content_type(request_str)
+            request_line = self.get_request_line(request_str)
+            print("Request Line:", request_line)
             request_params = self.extract_url_params(request_line)
-            print("Request Params",request_params)
+            print("Request Params:", request_params)
             sections = {
-                "request_params":request_params,
-                "request_headers":headers,
-                "request_body":body,
-                "content_type":content_type,
+                "request_params": request_params,
+                "request_headers": headers,
+                "request_body": body,
+                "content_type": content_type,
             }
-            if(self.check_request(sections,self.sql_detecter.predict)):
-                self.status_update_callback(f"SQL Injection Detected from IP : {client_ip}",danger_alert=True)
+            #ignore favicon request that is default as extra request in browsers
+            if request_line and "GET /favicon.ico" in request_line:
+                favicon = (
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: image/x-icon\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                )
+                client_socket.sendall(favicon.encode())
+                return
+            # SQL injection check
+            print(f"Checking request from {client_ip} for SQLi...")
+            if self.check_request(sections, self.sql_detecter.predict):
                 print('Not Permitted... | SQLi detected')
-                error_message = "HTTP/1.1 403 Forbidden\r\n\r\nRequest Forbidden"
-                client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"Request from {client_ip} forbidden. ( SQL Injection Detected! )",danger_alert=True)
+                try:
+                    client_socket.sendall(self.get_err_message("Request Forbidden!"))
+                    print("Sent 403 Forbidden response to client.")
+                except Exception as send_error:
+                    print(f"Failed to send 403 response: {str(send_error)}")
+                    self.status_update_callback(f"Failed to send 403 to {client_ip}: {str(send_error)}", danger_alert=True)
+                self.status_update_callback(f"SQL Injection Detected from IP: {client_ip}", danger_alert=True)
                 self.ip_blocker.block_ip(client_ip)
                 return
-            
-            # Check if there are healthy servers available
+
+            # Check for healthy servers
             if len(self.healthy_servers) <= 0:
-                error_message = "HTTP/1.1 500 Service Unavailable\r\n\r\nNo Upstream Server Available"
-                client_socket.sendall(error_message.encode())
-                self.status_update_callback(f"No available servers to handle the request from {client_ip}.",danger_alert=True)
+                # error_message = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 25\r\n\r\nNo Upstream Server Available"
+                # print(f"Socket fileno: {client_socket.fileno()}, sending 403 to {client_ip}")
+               
+
+                client_socket.sendall(self.get_err_message("No healthy servers!"))
+                self.status_update_callback(f"No available servers for {client_ip}.", danger_alert=True)
                 return
 
-            # Select backend server based on the chosen algorithm
+            # Select backend server
             if self.algorithm == 'round_robin':
                 backend_addr = self.get_server_round_robin()
-                self.status_update_callback(f"Selected backend server {backend_addr} using round-robin.")
+                self.status_update_callback(f"Selected {backend_addr} using round-robin.")
             elif self.algorithm == 'least_connection':
                 backend_addr = self.get_server_least_connections()
-                self.connection_count[backend_addr] += 1  # Increment connection count for chosen server
-                self.status_update_callback(f"Selected backend server {backend_addr} using least connections. Connection count updated.")
+                self.connection_count[backend_addr] += 1
+                self.status_update_callback(f"Selected {backend_addr} using least connections.")
             elif self.algorithm == 'ip_hash':
                 backend_addr = self.get_server_ip_hash(client_ip)
-                self.status_update_callback(f"Selected backend server {backend_addr} using IP hash for client IP {client_ip}.")
+                self.status_update_callback(f"Selected {backend_addr} using IP hash for {client_ip}.")
             else:
-                backend_addr = random.choice(self.healthy_servers)  # Default to random if unknown algorithm
-                self.status_update_callback(f"Selected backend server {backend_addr} randomly due to unknown algorithm.")
+                backend_addr = random.choice(self.healthy_servers)
+                self.status_update_callback(f"Selected {backend_addr} randomly.")
 
-            try:
-                # Connect to the backend server
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as backend_socket:
-                    backend_socket.connect(backend_addr)
-                    backend_socket.sendall(request_data.encode())
-
-                    # Receive the full response from the backend server
-                    response_data = b""
-                    while True:
+            # Forward request to backend
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as backend_socket:
+                backend_socket.settimeout(5)
+                backend_socket.connect(backend_addr)
+                backend_socket.sendall(request_data)
+                response_data = b""
+                while True:
+                    try:
                         part = backend_socket.recv(1024)
                         if not part:
                             break
                         response_data += part
+                    except socket.timeout:
+                        print("Backend server timed out.")
+                        break
 
-                # Send the full response back to the client
+            # Send response to client
+            if response_data:
+                print("<<<<<<<<<<<<<<<<<Response Data>>>>>>>>>>>>>\n", response_data.decode('utf-8', errors='ignore'))
                 client_socket.sendall(response_data)
-                self.status_update_callback(f"Successfully forwarded request to {backend_addr} and sent response back to client IP {client_ip}.")
-            except Exception as e:
-                self.status_update_callback(f"Error communicating with backend server {backend_addr}: {str(e)}",danger_alert=True)
+                self.status_update_callback(f"Sent response to {client_ip} from {backend_addr}.")
+            else:
+                print("No response data from backend.")
+                error_message = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 11\r\n\r\nBad Gateway"
+                client_socket.sendall(error_message.encode())
+                self.status_update_callback(f"No response from {backend_addr} for {client_ip}.", danger_alert=True)
+
         except Exception as e:
-            self.status_update_callback(f"Error handling client {client_ip}: {str(e)}",danger_alert=True)
+            print(f"Exception occurred: {str(e)}")
+            self.status_update_callback(f"Error handling client {client_ip}: {str(e)}", danger_alert=True)
         finally:
             client_socket.close()
-
-            # Decrement connection count for least_connection algorithm
             if self.algorithm == 'least_connection' and 'backend_addr' in locals():
                 self.connection_count[backend_addr] -= 1
-            # Increment request count for the chosen server
             if 'backend_addr' in locals() and backend_addr in self.server_status:
                 self.server_status[backend_addr]['requests'] += 1
-                self.status_update_callback(f"Incremented request count for server {backend_addr}. Total requests: {self.server_status[backend_addr]['requests']}.")
+                self.status_update_callback(f"Requests for {backend_addr}: {self.server_status[backend_addr]['requests']}.")
 
-
-
+    def get_err_message(self,msg):
+        error_message = (
+            "HTTP/1.1 403 Forbidden\r\n"
+            "Content-Type: text/plain\r\n"
+            f"Content-Length: {len(msg)}\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            f"{msg}"
+        )
+        return error_message.encode('utf-8')
     def start_load_balancer(self):
         print("Starting load balancer...")
         self.running = True
@@ -516,14 +567,14 @@ class LoadBalancer:
                 self.server_socket.listen()
             
                 self.status_update_callback(f"Load balancer is running at ip {machine_ip} port: {self.port} using {self.algorithm}...")
-                print(self.running,'Running')
+                # print(self.running,'Running')
                 while self.running:
-                    print("Before running socket")
+                    #print("Before running socket")
                     try:
                         client_socket, _ = self.server_socket.accept()
                         self.handle_thread = threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True)
                         self.handle_thread.start()
-                        print("After running socket")
+                        #print("After running socket")
                     except OSError as e:
                         if not self.running:
                             # This error is expected when stopping the load balancer
